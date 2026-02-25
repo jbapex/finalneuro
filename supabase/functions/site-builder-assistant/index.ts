@@ -1,6 +1,8 @@
 /**
- * Edge Function: generic-ai-chat
- * Chat com IA (OpenAI-compatible). Usado pelo Gerador de Conteúdo, Agente, NeuroDesign Preencher, etc.
+ * Edge Function: site-builder-assistant
+ * Assistente de IA para o Criador de Site (standalone e modal).
+ * Retorna resposta estruturada { type: 'html_update', html, explanation } quando
+ * a IA devolver HTML; caso contrário { type: 'message', content }.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -12,6 +14,39 @@ const corsHeaders = {
 };
 
 type Message = { role: string; content: string };
+
+function extractHtmlFromResponse(text: string): { html: string; explanation: string } | null {
+  if (!text || typeof text !== "string") return null;
+
+  // Bloco ```html ... ``` ou ``` ... ``` com tags
+  const codeBlockMatch = text.match(/```(?:html|jsx)?\s*\n([\s\S]*?)```/i);
+  if (codeBlockMatch) {
+    const html = codeBlockMatch[1].trim();
+    if (/<\s*(div|section|header|main|footer|nav|article|aside)/i.test(html)) {
+      const explanation = text.replace(codeBlockMatch[0], "").trim().slice(0, 200) || "Seção gerada pela IA.";
+      return { html, explanation };
+    }
+  }
+
+  // Primeiro trecho semântico <section>, <div>, etc. (tag de abertura até fechamento correspondente)
+  const openTagMatch = text.match(/<\s*(section|header|main|footer|article|aside|div)(\s[^>]*)?>/i);
+  if (openTagMatch) {
+    const tagName = openTagMatch[1].toLowerCase();
+    const startIdx = openTagMatch.index!;
+    const rest = text.slice(startIdx);
+    const closeRe = new RegExp(`<\\s*\\/${tagName}\\s*>`, "i");
+    const closeMatch = rest.match(closeRe);
+    if (closeMatch && closeMatch.index !== undefined) {
+      const endIdx = closeMatch.index + closeMatch[0].length;
+      const html = rest.slice(0, endIdx).trim();
+      if (html.length > 20) {
+        return { html, explanation: "Seção gerada pela IA." };
+      }
+    }
+  }
+
+  return null;
+}
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -133,10 +168,29 @@ serve(async (req) => {
     }
 
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = data?.choices?.[0]?.message?.content ?? "";
+    const rawContent = data?.choices?.[0]?.message?.content ?? "";
+
+    const extracted = extractHtmlFromResponse(rawContent);
+    if (extracted) {
+      return new Response(
+        JSON.stringify({
+          response: {
+            type: "html_update",
+            html: extracted.html,
+            explanation: extracted.explanation,
+          },
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(
-      JSON.stringify({ response: content }),
+      JSON.stringify({
+        response: {
+          type: "message",
+          content: rawContent,
+        },
+      }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (e) {

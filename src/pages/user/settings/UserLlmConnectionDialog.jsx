@@ -16,7 +16,9 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
   const { user } = useAuth();
   const [showApiKey, setShowApiKey] = useState(false);
   const [openRouterModels, setOpenRouterModels] = useState([]);
+  const [googleModels, setGoogleModels] = useState([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isLoadingGoogleModels, setIsLoadingGoogleModels] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     provider: 'OpenAI',
@@ -37,7 +39,9 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
     });
     setShowApiKey(false);
     setOpenRouterModels([]);
+    setGoogleModels([]);
     setIsLoadingModels(false);
+    setIsLoadingGoogleModels(false);
   };
 
   const fetchOpenRouterModels = useCallback(async (apiKey) => {
@@ -62,6 +66,41 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
     }
   }, []);
 
+  const fetchGoogleModels = useCallback(async (apiKey) => {
+    if (!apiKey) return;
+    setIsLoadingGoogleModels(true);
+    setGoogleModels([]);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-google-models', {
+        body: { apiKey },
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      const list = data?.models ?? (Array.isArray(data) ? data : []);
+      const raw = Array.isArray(list) ? list : [];
+      const textModels = raw
+        .filter((m) => {
+          const name = (m?.name ?? m?.baseModelId ?? '').toLowerCase();
+          return name.includes('gemini') && !name.includes('imagen');
+        })
+        .map((m) => ({
+          id: m?.name ?? m?.baseModelId ?? '',
+          name: m?.displayName || m?.name || m?.baseModelId || '',
+        }))
+        .filter((m) => m.id);
+      const sorted = textModels.slice().sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+      setGoogleModels(sorted);
+    } catch (err) {
+      toast.error('Falha ao buscar modelos da API Google', { description: 'Verifique se sua chave de API está correta e tente novamente.' });
+      setGoogleModels([]);
+    } finally {
+      setIsLoadingGoogleModels(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (formData.provider === 'OpenRouter' && debouncedApiKey) {
       fetchOpenRouterModels(debouncedApiKey);
@@ -70,15 +109,31 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
     }
   }, [formData.provider, debouncedApiKey, fetchOpenRouterModels]);
 
+  useEffect(() => {
+    if (formData.provider === 'Google' && debouncedApiKey) {
+      fetchGoogleModels(debouncedApiKey);
+    } else {
+      setGoogleModels([]);
+    }
+  }, [formData.provider, debouncedApiKey, fetchGoogleModels]);
+
+  const defaultApiUrlForProvider = (provider) => {
+    if (provider === 'Google') return 'https://generativelanguage.googleapis.com';
+    if (provider === 'OpenRouter') return 'https://openrouter.ai/api/v1';
+    if (provider === 'OpenAI') return 'https://api.openai.com/v1';
+    return '';
+  };
 
   useEffect(() => {
     if (isOpen) {
         if (editingConnection) {
+          const provider = editingConnection.provider || 'OpenAI';
+          const rawApiUrl = editingConnection.api_url || '';
           setFormData({
             name: editingConnection.name || '',
-            provider: editingConnection.provider || 'OpenAI',
+            provider,
             api_key: editingConnection.api_key || '',
-            api_url: editingConnection.api_url || '',
+            api_url: rawApiUrl.trim() || defaultApiUrlForProvider(provider),
             default_model: editingConnection.default_model || '',
           });
         } else {
@@ -96,7 +151,7 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
       newFormData.default_model = 'gpt-4o-mini';
     } else if (value === 'Google') {
       newFormData.api_url = 'https://generativelanguage.googleapis.com';
-      newFormData.default_model = 'gemini-1.5-pro-latest';
+      newFormData.default_model = '';
     } else {
       newFormData.api_url = '';
     }
@@ -110,12 +165,13 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
       return;
     }
 
+    const apiUrlToSave = (formData.api_url || '').trim() || defaultApiUrlForProvider(formData.provider);
     const dataToSave = {
       user_id: user.id,
       name: formData.name,
       provider: formData.provider,
       api_key: formData.api_key,
-      api_url: formData.api_url,
+      api_url: apiUrlToSave,
       default_model: formData.default_model,
       capabilities: { "text_generation": true, "image_generation": false, "site_builder": false },
       is_active: false,
@@ -156,6 +212,28 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
             </SelectContent>
           </Select>
           {isLoadingModels && <Loader2 className="absolute right-10 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
+        </div>
+      );
+    }
+
+    if (formData.provider === 'Google') {
+      return (
+        <div className="relative">
+          <Select
+            onValueChange={(value) => setFormData({ ...formData, default_model: value })}
+            value={formData.default_model}
+            disabled={isLoadingGoogleModels || googleModels.length === 0}
+          >
+            <SelectTrigger id="llm-conn-default_model" className="w-full glass-effect border-white/20">
+              <SelectValue placeholder={isLoadingGoogleModels ? "Carregando modelos..." : googleModels.length === 0 ? "Nenhum modelo encontrado" : "Selecione um modelo"} />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-800 text-white border-white/20 max-h-60">
+              {googleModels.map(model => (
+                <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isLoadingGoogleModels && <Loader2 className="absolute right-10 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
         </div>
       );
     }
@@ -203,7 +281,7 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
                 {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </Button>
             </div>
-            {formData.provider === 'OpenRouter' && <p className="text-xs text-muted-foreground mt-1">A lista de modelos será carregada após inserir uma chave válida.</p>}
+            {(formData.provider === 'OpenRouter' || formData.provider === 'Google') && <p className="text-xs text-muted-foreground mt-1">A lista de modelos será carregada após inserir uma chave válida.</p>}
           </div>
            <div>
             <Label htmlFor="llm-conn-default_model">Modelo Padrão</Label>

@@ -202,11 +202,12 @@ const ChatPanel = ({
       // Ask AI to propose a structure plan (no HTML yet)
       try {
         const selectedIntegration = llmIntegrations.find(i => i.id === selectedLlmId);
-        const plannerPrompt = `Atue como planner de landing pages. Com base nas mensagens do usuário, proponha:
+        const plannerPrompt = `Atue como planner de landing pages poderosas e legíveis. Com base nas mensagens do usuário, proponha:
         - Público-alvo, proposta de valor e tom
-        - Estrutura de seções (ordem): hero com 2 CTAs, provas sociais, benefícios (6 cards), features (tabs), como funciona (3 passos), comparativo, depoimentos, integrações, preços (3 planos), FAQ, CTA final
-        - Diretrizes visuais (Tailwind: max-w-7xl, grid 12 colunas, gradiente sutil, microinterações)
-        - CTAs principais e secundários
+        - Estrutura de seções (ordem): hero com 1 H1 + 2 CTAs + prova social, benefícios, features/uso, preços, FAQ, CTA final. Uma única H1 por página; hierarquia H2/H3 clara.
+        - Legibilidade: tipografia escalonada (text-base corpo, text-lg onde destacar), parágrafos curtos (2–4 linhas), line-height generoso, contraste forte (AA/AAA).
+        - Diretrizes visuais (Tailwind: max-w-7xl, grid 12 colunas, gradiente sutil, microinterações, sombras e bordas arredondadas).
+        - CTAs principais e secundários bem distintos; repetir CTA principal em pontos altos.
         - 2-3 variações de estilo (A/B/C)
         Responda apenas em texto estruturado, sem HTML. Termine perguntando: "Aprovar e gerar agora?"`;
 
@@ -249,19 +250,32 @@ const ChatPanel = ({
 
     try {
       // Prompt-base e composição de mensagens devem usar newMessages já definido
-      const baseSystemPrompt = `Você é um ARQUITETO DE LANDING PAGES premium. Objetivo: entregar trechos HTML/JSX (compatíveis com Tailwind) prontos para injeção no preview, com visual moderno e foco em conversão.
+      const baseSystemPrompt = `Você é um ARQUITETO DE LANDING PAGES premium. Objetivo: entregar trechos HTML/JSX (compatíveis com Tailwind) prontos para injeção no preview — sites PODEROSOS (conversão) e LEGÍVEIS (tipografia e a11y).
+
       POLÍTICAS GERAIS
       - Saída: somente o conteúdo do corpo (sem <html>/<head>/<body>), bem formatado e legível.
-      - Tecnologia: TailwindCSS (utilitárias), responsivo mobile-first, tipografia clara, contraste AA/AAA, sem scripts externos.
-      - Semântica: usar <header>, <section>, <main>, <footer> quando fizer sentido.
-      - Editabilidade: adicionar data-id e data-type em todos os textos clicáveis (headings, parágrafos, botões) para edição no editor.
-      - Microinterações: transitions no hover/focus (opacidade, escala suave), sombras leves (shadow-md) e bordas arredondadas (rounded-xl).
-      - Layout: containers max-w-7xl, grids responsivas (até 12 colunas), spacing generoso (py-16/24), uso de gap consistente.
-      - Visual: pode usar gradiente sutil (bg-gradient-to-r), badges/chips, cards, ícones placeholders.
-      - Conversão: CTAs evidentes em ponto alto e repetição contextual; se possível, hero com 2 CTAs e prova social.
-      - A11y/SEO: hierarquia H1/H2/H3 correta, alt em imagens, links descritivos.
-      - Incremental: se o usuário pedir mudanças, retorne SOMENTE a seção/trecho atualizado.
-      - Importante: quando gerar texto longo, separar em seções (hero, benefícios, depoimentos, preços, FAQ, CTA final).`;
+      - Tecnologia: TailwindCSS (utilitárias), responsivo mobile-first, sem scripts externos.
+
+      LEGIBILIDADE (obrigatório)
+      - Uma única H1 por página; H2/H3 em ordem lógica.
+      - Parágrafos curtos (2–4 linhas); line-height generoso: leading-relaxed ou leading-loose em blocos de texto.
+      - Font-size escalonado: text-base para corpo, text-lg onde destacar; evitar paredes de texto.
+      - Contraste forte: texto escuro em fundo claro ou texto claro em fundo escuro; evitar cinzas baixos; contraste AA/AAA.
+      - Semântica: <header>, <section>, <main>, <footer>; alt em todas as imagens; links descritivos.
+
+      PODER / CONVERSÃO
+      - Estrutura sugerida: hero (título + 2 CTAs + prova social) → benefícios → features/uso → preços → FAQ → CTA final.
+      - CTAs principais e secundários bem distintos (cor e estilo); repetir o CTA principal em pontos altos.
+      - Prova social e urgência quando fizer sentido ("X clientes", "Oferta por tempo limitado").
+
+      LAYOUT E VISUAL
+      - Editabilidade: data-id e data-type em headings, parágrafos e botões para edição no editor.
+      - Microinterações: transition no hover/focus (opacidade, escala suave), shadow-md, rounded-xl.
+      - Containers max-w-7xl, grids responsivas (até 12 colunas), spacing generoso (py-16/24), gap consistente.
+      - Gradiente sutil (bg-gradient-to-r), badges/chips, cards, ícones placeholders.
+
+      Incremental: se o usuário pedir mudanças, retorne SOMENTE a seção/trecho atualizado.
+      Quando gerar página completa, separar em seções (hero, benefícios, depoimentos, preços, FAQ, CTA final).`;
 
       const messagesWithSystem = [
         { role: 'system', content: baseSystemPrompt },
