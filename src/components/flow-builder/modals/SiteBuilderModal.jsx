@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useMediaQuery } from '@/hooks/use-media-query';
-import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 import ModulePanel from '@/components/site-builder/ModulePanel';
@@ -262,37 +261,23 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
       onOpenImageBank: () => setIsImageBankOpen(true),
     };
 
-    const renderActiveView = () => {
-      switch (activeView) {
-        case 'modules':
-          return (
+    return (
+      <div className="flex flex-col h-full">
+        <main className="flex-grow overflow-y-auto relative">
+          {/* Todas as abas montadas para o iframe do preview não recarregar ao trocar de aba */}
+          <div className={activeView === 'modules' ? 'h-full' : 'hidden'}>
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={pageStructure} strategy={verticalListSortingStrategy}>
                 <ModulePanel {...commonProps} />
               </SortableContext>
             </DndContext>
-          );
-        case 'chat': return <ChatPanel pageStructure={pageStructure} setPageStructure={setPageStructure} setIsBuilding={setIsBuilding} flowContext={flowContext} />;
-        case 'preview': return <PreviewPanel pageStructure={pageStructure} setPageStructure={setPageStructure} selectedElement={selectedElement} setSelectedElement={setSelectedElement} onOpenImageBank={() => setIsImageBankOpen(true)} isBuilding={isBuilding} />;
-        default: return null;
-      }
-    };
-
-    return (
-      <div className="flex flex-col h-full">
-        <main className="flex-grow overflow-y-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeView}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-              className="h-full"
-            >
-              {renderActiveView()}
-            </motion.div>
-          </AnimatePresence>
+          </div>
+          <div className={activeView === 'chat' ? 'h-full' : 'hidden'}>
+            <ChatPanel pageStructure={pageStructure} setPageStructure={setPageStructure} setIsBuilding={setIsBuilding} flowContext={flowContext} />
+          </div>
+          <div className={activeView === 'preview' ? 'h-full' : 'hidden'}>
+            <PreviewPanel pageStructure={pageStructure} setPageStructure={setPageStructure} selectedElement={selectedElement} setSelectedElement={setSelectedElement} onOpenImageBank={() => setIsImageBankOpen(true)} isBuilding={isBuilding} />
+          </div>
         </main>
         <footer className="h-20 bg-background/80 backdrop-blur-lg border-t border-border">
           <div className="grid h-full max-w-lg grid-cols-3 mx-auto">

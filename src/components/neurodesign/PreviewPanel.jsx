@@ -64,10 +64,10 @@ const PreviewPanel = ({ project, user, selectedImage, images, isGenerating, isRe
         )}
       </div>
 
-      {/* Criações deste projeto */}
+      {/* Criações desta galeria */}
       {images.length > 0 && (
         <div className="mt-4 pt-3 border-t border-border min-w-0 flex-shrink-0">
-          <p className="text-xs text-muted-foreground font-medium mb-2">Criações deste projeto</p>
+          <p className="text-xs text-muted-foreground font-medium mb-2">Criações desta galeria</p>
           <div className="flex gap-2 overflow-x-auto pb-1">
             {images.slice(0, 5).map((img) => {
               const url = img.url || img.thumbnail_url;

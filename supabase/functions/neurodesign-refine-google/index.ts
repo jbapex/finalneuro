@@ -333,8 +333,21 @@ serve(async (req) => {
     const dimensionsForApi = (dimensionsOverride || (configOverrides?.dimensions as string) || "").trim() || "1:1";
     const imageSizeForApi = normalizeImageSize(configOverrides?.image_size);
     const aspectRatioForPrompt = getAspectRatio(dimensionsForApi);
-    if (aspectRatioForPrompt && aspectRatioForPrompt !== "1:1") {
-      textPrompt = (textPrompt + ` Important: output the image in ${aspectRatioForPrompt} aspect ratio.`).trim();
+    const hasDimensionOverride = aspectRatioForPrompt && aspectRatioForPrompt !== "1:1";
+    const hasOtherAction = !!(
+      instructionTrimmed ||
+      (region && regionCropImageUrl && selectionAction) ||
+      referenceImageUrl ||
+      replacementImageUrl ||
+      addImageUrl
+    );
+    if (hasDimensionOverride) {
+      const aspectRatioInstruction = `Recreate this image in exactly ${aspectRatioForPrompt} aspect ratio. Fill the entire frame with the same scene, style and subjects; extend or recompose the composition so the new frame is fully filled with content. Do not add black bars, letterboxing, or empty borders. Output a single coherent image in the requested aspect ratio.`;
+      if (!hasOtherAction) {
+        textPrompt = aspectRatioInstruction + (instructionTrimmed ? ` Also apply: ${instructionTrimmed}` : "");
+      } else {
+        textPrompt = (textPrompt + " " + aspectRatioInstruction).trim();
+      }
     }
 
     const resolvedImageUrls: string[] = [];

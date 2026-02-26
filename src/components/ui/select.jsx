@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,13 +25,31 @@ const useSelectContext = () => {
 const TriggerWrapper = React.forwardRef(({ asChild, ...props }, ref) => <div ref={ref} {...props} />);
 TriggerWrapper.displayName = 'TriggerWrapper';
 
+function getLabelFromChildren(children, value) {
+  if (value === undefined || value === null) return undefined;
+  let found = undefined;
+  React.Children.forEach(children, (child) => {
+    if (!child?.props) return;
+    if (child.props.value !== undefined && String(child.props.value) === String(value)) {
+      found = child.props.children;
+    } else if (child.props?.children) {
+      const nested = getLabelFromChildren(child.props.children, value);
+      if (nested !== undefined) found = nested;
+    }
+  });
+  return found;
+}
+
 const Select = (props) => {
   const isDesktop = useMediaQuery('(min-width: 768px)');
-  
+  const [selectedLabel, setSelectedLabel] = useState(undefined);
+
   const contextValue = React.useMemo(() => ({
     isDesktop,
+    selectedLabel,
+    setSelectedLabel,
     ...props,
-  }), [isDesktop, props]);
+  }), [isDesktop, selectedLabel, props]);
 
   if (isDesktop) {
     return (
@@ -57,7 +75,7 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) 
   const TriggerComponent = isDesktop ? SelectPrimitive.Trigger : DrawerTrigger;
   const IconComponent = isDesktop ? SelectPrimitive.Icon : 'div';
   const triggerClassName = cn(
-    'flex h-10 w-full items-center justify-between rounded-md border border-input bg-transparent px-4 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
+    'flex h-10 w-full items-center justify-between rounded-md border border-input bg-transparent px-4 py-2 text-base sm:text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50',
     className
   );
   return (
@@ -74,7 +92,15 @@ const SelectTrigger = React.forwardRef(({ className, children, ...props }, ref) 
 SelectTrigger.displayName = 'SelectTrigger';
 
 const SelectContent = React.forwardRef(({ className, children, position = 'popper', ...props }, ref) => {
-  const { isDesktop } = useSelectContext();
+  const { isDesktop, value, setSelectedLabel } = useSelectContext();
+
+  useEffect(() => {
+    if (isDesktop) return;
+    if (setSelectedLabel && children != null) {
+      const label = getLabelFromChildren(children, value);
+      setSelectedLabel(label !== undefined ? label : '');
+    }
+  }, [isDesktop, value, children, setSelectedLabel]);
 
   if (isDesktop) {
     return (
@@ -116,9 +142,10 @@ const SelectContent = React.forwardRef(({ className, children, position = 'poppe
 SelectContent.displayName = 'SelectContent';
 
 const SelectItem = React.forwardRef(({ className, children, value, ...props }, ref) => {
-  const { isDesktop, onValueChange, onOpenChange } = useSelectContext();
-  
+  const { isDesktop, onValueChange, onOpenChange, setSelectedLabel } = useSelectContext();
+
   const handleSelect = () => {
+    if (setSelectedLabel) setSelectedLabel(children);
     if (onValueChange) {
       onValueChange(value);
     }
@@ -167,20 +194,15 @@ const SelectItem = React.forwardRef(({ className, children, value, ...props }, r
 SelectItem.displayName = 'SelectItem';
 
 const SelectValue = React.forwardRef(({ className, placeholder, children, ...props }, ref) => {
-  const { isDesktop, value } = useSelectContext();
-  
+  const { isDesktop, selectedLabel } = useSelectContext();
+
   if (isDesktop) {
     return <SelectPrimitive.Value ref={ref} className={className} placeholder={placeholder} {...props} />;
   }
 
-  // For mobile drawer, find the selected child to display its content
-  const selectedChild = React.Children.toArray(children).find(
-    (child) => child.props.value === value
-  );
-
   return (
     <span ref={ref} className={className} {...props}>
-      {selectedChild ? selectedChild.props.children : placeholder}
+      {selectedLabel !== undefined && selectedLabel !== '' ? selectedLabel : placeholder}
     </span>
   );
 });

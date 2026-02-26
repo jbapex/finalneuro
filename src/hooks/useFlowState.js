@@ -103,7 +103,28 @@ export const useFlowState = (flowData) => {
             for (const edge of incomingEdges) {
                 const sourceNode = currentNodes.find(n => n.id === edge.source);
                 if (sourceNode) {
-                    if (sourceNode.data.output) {
+                    let entry = sourceNode.data.output;
+                    if (!entry && sourceNode.type === 'subject') {
+                        const d = sourceNode.data;
+                        const hasSubject = d.subject_gender || (typeof d.subject_description === 'string' && d.subject_description.trim()) || (Array.isArray(d.subject_image_urls) && d.subject_image_urls.length > 0);
+                        if (hasSubject) {
+                            entry = {
+                                id: sourceNode.id,
+                                data: {
+                                    subject_gender: d.subject_gender,
+                                    subject_description: typeof d.subject_description === 'string' ? d.subject_description : '',
+                                    subject_image_urls: Array.isArray(d.subject_image_urls) ? d.subject_image_urls : [],
+                                },
+                            };
+                        }
+                    }
+                    if (!entry && (sourceNode.type === 'image_logo' || /^image_logo(_\d+)?$/.test(sourceNode.type))) {
+                        const url = sourceNode.data?.logo_url;
+                        if (typeof url === 'string' && url.trim()) {
+                            entry = { id: sourceNode.id, data: { logo_url: url.trim() } };
+                        }
+                    }
+                    if (entry) {
                         let key = sourceNode.type;
                         if (context[key]) {
                             let i = 2;
@@ -112,7 +133,7 @@ export const useFlowState = (flowData) => {
                             }
                             key = `${key}_${i}`;
                         }
-                        context[key] = sourceNode.data.output;
+                        context[key] = entry;
                     }
                     if (!visited.has(sourceNode.id)) {
                         queue.push(sourceNode.id);

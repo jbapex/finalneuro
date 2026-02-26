@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Loader2, Edit, AlertTriangle } from 'lucide-react';
 import { Helmet } from 'react-helmet';
 import { Button } from '@/components/ui/button';
+import { applyModuleColors } from '@/lib/applyModuleColors';
 
 const SitePreview = () => {
   const { projectId } = useParams();
@@ -35,7 +36,14 @@ const SitePreview = () => {
     fetchProject();
   }, [fetchProject]);
 
-  const combinedHtml = project?.page_structure?.map(module => module.html).join('') || '';
+  const combinedHtml = useMemo(() => {
+    const structure = project?.page_structure;
+    if (!structure?.length) return '';
+    return structure
+      .map((module) => applyModuleColors(module.html, module.backgroundColor, module.textColor))
+      .join('');
+  }, [project?.page_structure]);
+
   const fullHtml = `
     <!DOCTYPE html>
     <html lang="pt-BR">
@@ -47,7 +55,7 @@ const SitePreview = () => {
       <title>${project?.name || 'Preview'}</title>
     </head>
     <body>
-      <div id="root">${combinedHtml}</div>
+      <div id="root">${combinedHtml || ''}</div>
     </body>
     </html>
   `;

@@ -22,7 +22,7 @@ const MasonryGallery = ({ images, projectId, selectedIds = [], onSelectImage, on
   if (!projectId) {
     return (
       <div className="text-center text-muted-foreground py-12">
-        Selecione um projeto para ver a galeria.
+        Selecione uma galeria na barra lateral para ver as imagens.
       </div>
     );
   }

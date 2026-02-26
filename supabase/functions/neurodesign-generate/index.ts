@@ -7,52 +7,178 @@ const corsHeaders = {
 };
 
 function buildPrompt(config: Record<string, unknown>): string {
-  const parts: string[] = [];
-  const textBlockParts: string[] = [];
+  const textOff = config.text_enabled === false || config.text_enabled === "false";
+  const subjectOff = config.subject_enabled === false || config.subject_enabled === "false";
 
-  if (config.text_enabled) {
+  const restrictionParts: string[] = [];
+  if (textOff) restrictionParts.push("OBRIGATÓRIO: Não incluir texto, títulos, slogans ou botões na imagem. Imagem apenas visual, sem nenhuma escrita.");
+  if (subjectOff) restrictionParts.push("OBRIGATÓRIO: Não incluir pessoas, rostos ou figuras humanas na imagem. Imagem totalmente sem sujeito/pessoa.");
+
+  const fontLabel: Record<string, string> = { sans: "sans serifa", serif: "serifa", bold: "negrito", modern: "moderno" };
+  const shapeLabel: Record<string, string> = { rounded_rectangle: "retângulo arredondado", banner: "faixa/banner", pill: "pill/cápsula" };
+  const ZONE_TO_LABEL: Record<string, string> = {
+    "top-left": "zona superior esquerda", "top-center": "zona superior centro", "top-right": "zona superior direita",
+    "center-left": "zona meio esquerda", "center": "centro", "center-right": "zona meio direita",
+    "bottom-left": "zona inferior esquerda", "bottom-center": "zona inferior centro", "bottom-right": "zona inferior direita",
+  };
+  function resolvePositionPhrase(zone: string, position: string, textPos: string): string {
+    const t = (textPos || "").trim() || "centro";
+    if (zone && ZONE_TO_LABEL[zone]) return ZONE_TO_LABEL[zone];
+    return (position || "").trim() || t;
+  }
+  function fieldFont(cfg: Record<string, unknown>, field: "headline" | "subheadline" | "cta"): string {
+    const v = field === "headline" ? cfg.headline_font : field === "subheadline" ? cfg.subheadline_font : cfg.cta_font;
+    return (String(v || "").trim() || String(cfg.text_font || "").trim()) as string;
+  }
+  function fieldColor(cfg: Record<string, unknown>, field: "headline" | "subheadline" | "cta"): string {
+    const v = field === "headline" ? cfg.headline_color : field === "subheadline" ? cfg.subheadline_color : cfg.cta_color;
+    const raw = (String(v || "").trim() || String(cfg.text_color || "").trim()) as string;
+    return raw && /^#[0-9a-fA-F]{3,6}$/.test(raw) ? raw : "";
+  }
+  function fieldShape(cfg: Record<string, unknown>, field: "headline" | "subheadline" | "cta"): { style: string; color: string } | null {
+    const enabled = field === "headline" ? cfg.headline_shape_enabled : field === "subheadline" ? cfg.subheadline_shape_enabled : cfg.cta_shape_enabled;
+    const styleKey = field === "headline" ? cfg.headline_shape_style : field === "subheadline" ? cfg.subheadline_shape_style : cfg.cta_shape_style;
+    const colorRaw = field === "headline" ? cfg.headline_shape_color : field === "subheadline" ? cfg.subheadline_shape_color : cfg.cta_shape_color;
+    if (enabled) {
+      const style = shapeLabel[String(styleKey)] || "retângulo arredondado";
+      const color = (colorRaw && /^#[0-9a-fA-F]{3,6}$/.test(String(colorRaw).trim())) ? String(colorRaw).trim() : "destaque";
+      return { style, color };
+    }
+    if (cfg.text_shape_enabled) {
+      const style = shapeLabel[cfg.text_shape_style as string] || "retângulo arredondado";
+      const color = (cfg.text_shape_color && /^#[0-9a-fA-F]{3,6}$/.test(String(cfg.text_shape_color).trim())) ? String(cfg.text_shape_color).trim() : "destaque";
+      return { style, color };
+    }
+    return null;
+  }
+
+  const textBlockParts: string[] = [];
+  if (!textOff && config.text_enabled) {
     const h1 = (config.headline_h1 as string)?.trim() || "";
     const h2 = (config.subheadline_h2 as string)?.trim() || "";
     const cta = (config.cta_button_text as string)?.trim() || "";
     const textPos = (config.text_position as string)?.trim() || "centro";
+    const posH = resolvePositionPhrase(String(config.headline_zone || ""), String(config.headline_position || ""), textPos);
+    const posH2 = resolvePositionPhrase(String(config.subheadline_zone || ""), String(config.subheadline_position || ""), textPos);
+    const posCta = resolvePositionPhrase(String(config.cta_zone || ""), String(config.cta_position || ""), textPos);
     if (h1 || h2 || cta) {
       const textLines: string[] = [];
       if (h1) textLines.push(`Título em destaque: "${h1}"`);
       if (h2) textLines.push(`Subtítulo: "${h2}"`);
       if (cta) textLines.push(`Botão: "${cta}"`);
+      const posParts: string[] = [];
+      if (h1) posParts.push(`Título na ${posH}`);
+      if (h2) posParts.push(`Subtítulo na ${posH2}`);
+      if (cta) posParts.push(`CTA na ${posCta}`);
+      let posPhrase = posParts.join(", ") + ".";
+      if (!h1 || !h2 || !cta) {
+        posPhrase += " Não incluir na imagem título, subtítulo ou CTA que não tenham sido listados acima.";
+      }
+      posPhrase += " Incluir na imagem APENAS estes textos; não adicionar título, subtítulo ou botão que não tenham sido especificados.";
       textBlockParts.push(
         "OBRIGATÓRIO - TEXTO VISÍVEL NA IMAGEM: A arte deve exibir este texto de forma clara e legível, sem alterar uma letra: " +
-          textLines.join(". ") + ". Posição do texto: " + textPos + "."
+          textLines.join(". ") + ". " + posPhrase
       );
       if (config.text_gradient) textBlockParts.push("O texto deve ter efeito de gradiente (degradê nas letras).");
+      if (h1) {
+        const f = fieldFont(config, "headline");
+        if (f && fontLabel[f]) textBlockParts.push(`Fonte do título: ${fontLabel[f]}.`);
+        const c = fieldColor(config, "headline");
+        if (c) textBlockParts.push(`Cor do título: ${c}.`);
+        const sh = fieldShape(config, "headline");
+        if (sh) textBlockParts.push(`Título sobre faixa/forma de destaque atrás (${sh.style}, cor ${sh.color}).`);
+      }
+      if (h2) {
+        const f = fieldFont(config, "subheadline");
+        if (f && fontLabel[f]) textBlockParts.push(`Fonte do subtítulo: ${fontLabel[f]}.`);
+        const c = fieldColor(config, "subheadline");
+        if (c) textBlockParts.push(`Cor do subtítulo: ${c}.`);
+        const sh = fieldShape(config, "subheadline");
+        if (sh) textBlockParts.push(`Subtítulo sobre faixa/forma de destaque atrás (${sh.style}, cor ${sh.color}).`);
+      }
+      if (cta) {
+        const f = fieldFont(config, "cta");
+        if (f && fontLabel[f]) textBlockParts.push(`Fonte do CTA: ${fontLabel[f]}.`);
+        const c = fieldColor(config, "cta");
+        if (c) textBlockParts.push(`Cor do CTA: ${c}.`);
+        const sh = fieldShape(config, "cta");
+        if (sh) textBlockParts.push(`CTA sobre faixa/forma de destaque atrás (${sh.style}, cor ${sh.color}).`);
+      }
     } else {
-      textBlockParts.push("Espaço reservado para texto na composição. Posição: " + textPos + ".");
+      textBlockParts.push("Não incluir texto, títulos, subtítulos ou botões na imagem (nenhum texto foi definido pelo usuário).");
     }
   }
 
-  const gender = config.subject_gender === "masculino" ? "homem" : config.subject_gender === "feminino" ? "mulher" : "";
-  const subjectDesc = (config.subject_description as string)?.trim() || "";
-  if (gender || subjectDesc) parts.push(`Sujeito principal: ${[gender, subjectDesc].filter(Boolean).join(", ")}.`);
+  const parts: string[] = [];
+  if (!subjectOff) {
+    const numSubjects = Math.min(Math.max(Number(config.quantity) || 1, 1), 5);
+    parts.push(`A imagem deve conter exatamente ${numSubjects} ${numSubjects === 1 ? "sujeito/pessoa" : "sujeitos/pessoas"}.`);
+    const gender = config.subject_gender === "masculino" ? "homem" : config.subject_gender === "feminino" ? "mulher" : "";
+    const subjectDesc = (config.subject_description as string)?.trim() || "";
+    if (gender || subjectDesc) parts.push(`Sujeito principal: ${[gender, subjectDesc].filter(Boolean).join(", ")}.`);
+  }
   const niche = (config.niche_project as string)?.trim();
   if (niche) parts.push(`Contexto/nicho: ${niche}. Objetivo: criativo de marca/ads.`);
   const env = (config.environment as string)?.trim();
   if (env) parts.push(`Ambiente: ${env}.`);
+  const useScenario = config.use_scenario_photos === true || config.use_scenario_photos === "true";
+  const scenarioUrls = Array.isArray(config.scenario_photo_urls) ? config.scenario_photo_urls : [];
+  if (useScenario && scenarioUrls.length > 0) {
+    parts.push("Use as imagens de cenário anexas como referência para o ambiente/fundo. O cenário da arte deve ser inspirado ou reproduzir o ambiente dessas fotos.");
+  }
   const colors = [config.ambient_color, config.rim_light_color, config.fill_light_color].filter(Boolean) as string[];
   if (colors.length) parts.push(`Iluminação e cores: ${colors.join(", ")}.`);
   const shot = config.shot_type as string;
   const layoutPos = config.layout_position as string;
   if (shot) parts.push(`Enquadramento: ${shot}.`);
   if (layoutPos) parts.push(`Posição do sujeito: ${layoutPos}.`);
-  if (config.text_enabled) {
-    parts.push("Espaço reservado para texto na composição.");
+  if (!textOff && config.text_enabled) {
     const h1 = (config.headline_h1 as string)?.trim() || "";
     const h2 = (config.subheadline_h2 as string)?.trim() || "";
     const cta = (config.cta_button_text as string)?.trim() || "";
     if (h1 || h2 || cta) {
+      parts.push("Espaço reservado para texto na composição.");
       parts.push("O texto exibido na imagem deve ser exatamente: " + [h1, h2, cta].filter(Boolean).map((t) => `"${t}"`).join(", ") + ".");
-      const textPos = (config.text_position as string)?.trim();
-      if (textPos) parts.push(`Posição do texto na imagem: ${textPos}.`);
+      const textPos = (config.text_position as string)?.trim() || "centro";
+      const posH = resolvePositionPhrase(String(config.headline_zone || ""), String(config.headline_position || ""), textPos);
+      const posH2 = resolvePositionPhrase(String(config.subheadline_zone || ""), String(config.subheadline_position || ""), textPos);
+      const posCta = resolvePositionPhrase(String(config.cta_zone || ""), String(config.cta_position || ""), textPos);
+      const posParts: string[] = [];
+      if (h1) posParts.push(`Título na ${posH}`);
+      if (h2) posParts.push(`Subtítulo na ${posH2}`);
+      if (cta) posParts.push(`CTA na ${posCta}`);
+      parts.push(posParts.join(", ") + ".");
+      if (!h1 || !h2 || !cta) {
+        parts.push("Não incluir na imagem título, subtítulo ou CTA que não tenham sido listados acima.");
+      }
+      parts.push("Incluir na imagem APENAS estes textos; não adicionar título, subtítulo ou botão que não tenham sido especificados.");
       if (config.text_gradient) parts.push("O texto na imagem deve ter efeito de gradiente (degradê nas letras), visível e aplicado ao título e subtítulo.");
+      if (h1) {
+        const f = fieldFont(config, "headline");
+        if (f && fontLabel[f]) parts.push(`Fonte do título: ${fontLabel[f]}.`);
+        const c = fieldColor(config, "headline");
+        if (c) parts.push(`Cor do título: ${c}.`);
+        const sh = fieldShape(config, "headline");
+        if (sh) parts.push(`Título sobre faixa/forma de destaque (${sh.style}, cor ${sh.color}).`);
+      }
+      if (h2) {
+        const f = fieldFont(config, "subheadline");
+        if (f && fontLabel[f]) parts.push(`Fonte do subtítulo: ${fontLabel[f]}.`);
+        const c = fieldColor(config, "subheadline");
+        if (c) parts.push(`Cor do subtítulo: ${c}.`);
+        const sh = fieldShape(config, "subheadline");
+        if (sh) parts.push(`Subtítulo sobre faixa/forma de destaque (${sh.style}, cor ${sh.color}).`);
+      }
+      if (cta) {
+        const f = fieldFont(config, "cta");
+        if (f && fontLabel[f]) parts.push(`Fonte do CTA: ${fontLabel[f]}.`);
+        const c = fieldColor(config, "cta");
+        if (c) parts.push(`Cor do CTA: ${c}.`);
+        const sh = fieldShape(config, "cta");
+        if (sh) parts.push(`CTA sobre faixa/forma de destaque (${sh.style}, cor ${sh.color}).`);
+      }
+    } else {
+      parts.push("Não incluir texto, títulos, subtítulos ou botões na imagem (nenhum texto foi definido pelo usuário).");
     }
   }
   const attrs = (config.visual_attributes as Record<string, unknown>) || {};
@@ -80,11 +206,17 @@ function buildPrompt(config: Record<string, unknown>): string {
   const logoUrl = (config.logo_url as string)?.trim();
   if (logoUrl) parts.push("Inclua a logo anexa na arte, em posição visível e adequada (ex.: canto inferior, junto ao texto ou à marca).");
   const dims = (config.dimensions as string) || "1:1";
-  parts.push(`Formato: ${dims}. Safe area para texto.`);
+  if (textOff) {
+    parts.push(`Formato: ${dims}.`);
+  } else {
+    parts.push(`Formato: ${dims}. Safe area para texto.`);
+  }
   if ((config.additional_prompt as string)?.trim()) parts.push((config.additional_prompt as string).trim());
   const mainPrompt = parts.filter(Boolean).join(" ");
+  const restrictionBlock = restrictionParts.filter(Boolean).join(" ");
   const textBlock = textBlockParts.filter(Boolean).join(" ");
-  return textBlock ? textBlock + " " + mainPrompt : mainPrompt;
+  const prefix = [restrictionBlock, textBlock].filter(Boolean).join(" ");
+  return prefix ? prefix + " " + mainPrompt : mainPrompt;
 }
 
 const SUBJECT_FACE_INSTRUCTION =
@@ -109,6 +241,9 @@ const STYLE_REFERENCE_INSTRUCTION =
 
 const LOGO_INSTRUCTION = "Inclua a logo anexa na arte, em posição visível e adequada (ex.: canto inferior, junto ao texto ou à marca). ";
 
+const SCENARIO_INSTRUCTION =
+  "Use as imagens de cenário anexas como referência para o ambiente/fundo da imagem. O cenário da arte deve ser inspirado ou reproduzir o ambiente dessas fotos. ";
+
 async function generateWithOpenRouter(
   conn: Conn,
   prompt: string,
@@ -117,24 +252,28 @@ async function generateWithOpenRouter(
   subjectImageUrls: string[] = [],
   styleReferenceUrls: string[] = [],
   styleInstruction?: string,
-  logoUrl?: string
+  logoUrl?: string,
+  scenarioPhotoUrls: string[] = []
 ): Promise<{ url: string }[]> {
   const baseUrl = conn.api_url.replace(/\/$/, "");
   const url = `${baseUrl}/chat/completions`;
   const model = conn.default_model || "google/gemini-2.0-flash-exp:free";
   let textPrompt = prompt;
+  if (scenarioPhotoUrls.length > 0) textPrompt = SCENARIO_INSTRUCTION + textPrompt;
   if (subjectImageUrls.length > 0) textPrompt = SUBJECT_FACE_INSTRUCTION + textPrompt;
   if (styleReferenceUrls.length > 0) textPrompt = (styleInstruction || STYLE_REFERENCE_INSTRUCTION) + textPrompt;
   if (logoUrl?.trim()) textPrompt = LOGO_INSTRUCTION + textPrompt;
   const hasSubject = subjectImageUrls.length > 0;
   const hasStyle = styleReferenceUrls.length > 0;
+  const hasScenario = scenarioPhotoUrls.length > 0;
   const hasLogo = !!(logoUrl?.trim());
   const content: unknown =
-    hasSubject || hasStyle || hasLogo
+    hasSubject || hasStyle || hasScenario || hasLogo
       ? [
           { type: "text", text: textPrompt },
           ...subjectImageUrls.slice(0, 2).map((subjectUrl) => ({ type: "image_url" as const, image_url: { url: subjectUrl }, imageUrl: { url: subjectUrl } })),
           ...styleReferenceUrls.slice(0, 3).map((styleUrl) => ({ type: "image_url" as const, image_url: { url: styleUrl }, imageUrl: { url: styleUrl } })),
+          ...scenarioPhotoUrls.slice(0, 3).map((scenarioUrl) => ({ type: "image_url" as const, image_url: { url: scenarioUrl }, imageUrl: { url: scenarioUrl } })),
           ...(hasLogo ? [{ type: "image_url" as const, image_url: { url: logoUrl!.trim() }, imageUrl: { url: logoUrl!.trim() } }] : []),
         ]
       : textPrompt;
@@ -166,7 +305,7 @@ async function generateWithOpenRouter(
     throw new Error("A API não retornou imagens. Pode ser filtro de conteúdo ou limite do modelo. Tente outro prompt ou conexão.");
   }
   const urls: { url: string }[] = [];
-  for (const img of images.slice(0, Math.min(quantity, 5))) {
+  for (const img of images.slice(0, Math.min(quantity, 1))) {
     const urlStr = img.image_url?.url ?? img.imageUrl?.url;
     if (urlStr) urls.push({ url: urlStr });
   }
@@ -206,19 +345,22 @@ async function generateWithGoogleGemini(
   subjectImageUrls: string[] = [],
   styleReferenceUrls: string[] = [],
   styleInstruction?: string,
-  logoUrl?: string
+  logoUrl?: string,
+  scenarioPhotoUrls: string[] = []
 ): Promise<{ url: string }[]> {
   const baseUrl = conn.api_url.replace(/\/$/, "");
   const model = conn.default_model || "gemini-2.5-flash-image";
   const url = `${baseUrl}/models/${model}:generateContent`;
   const aspectRatio = getAspectRatio(dimensions);
   let textPrompt = prompt;
+  if (scenarioPhotoUrls.length > 0) textPrompt = SCENARIO_INSTRUCTION + textPrompt;
   if (subjectImageUrls.length > 0) textPrompt = SUBJECT_FACE_INSTRUCTION + textPrompt;
   if (styleReferenceUrls.length > 0) textPrompt = (styleInstruction || STYLE_REFERENCE_INSTRUCTION) + textPrompt;
   if (logoUrl?.trim()) textPrompt = LOGO_INSTRUCTION + textPrompt;
   const urlsToFetch: string[] = [
     ...subjectImageUrls.slice(0, 2),
     ...styleReferenceUrls.slice(0, 3),
+    ...scenarioPhotoUrls.slice(0, 3),
     ...(logoUrl?.trim() ? [logoUrl.trim()] : []),
   ];
   const fetchResults = await Promise.all(urlsToFetch.map(fetchImageAsBase64));
@@ -312,11 +454,18 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "Projeto não encontrado ou acesso negado" }), { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
-    const quantity = Math.min(Math.max(Number(config.quantity) || 1, 1), 5);
+    const quantityForApi = 1;
     const prompt = buildPrompt(config);
-    const subjectImageUrls: string[] = Array.isArray(config.subject_image_urls)
+    const subjectOff = config.subject_enabled === false || config.subject_enabled === "false";
+    let subjectImageUrls: string[] = Array.isArray(config.subject_image_urls)
       ? (config.subject_image_urls as string[]).filter((u): u is string => typeof u === "string" && u.length > 0).slice(0, 2)
       : [];
+    if (subjectOff) subjectImageUrls = [];
+    const useScenarioPhotos = config.use_scenario_photos === true || config.use_scenario_photos === "true";
+    const scenarioPhotoUrls: string[] =
+      useScenarioPhotos && Array.isArray(config.scenario_photo_urls)
+        ? (config.scenario_photo_urls as string[]).filter((u): u is string => typeof u === "string" && u.length > 0).slice(0, 3)
+        : [];
     const styleReferenceUrls: string[] = Array.isArray(config.style_reference_urls)
       ? (config.style_reference_urls as string[]).filter((u): u is string => typeof u === "string" && u.length > 0).slice(0, 3)
       : [];
@@ -375,20 +524,20 @@ serve(async (req) => {
           try {
             if (apiUrl.includes("openrouter")) {
               providerLabel = "openrouter";
-              images = await generateWithOpenRouter(conn as Conn, promptToUse, quantity, (config.dimensions as string) || "1:1", subjectImageUrls, styleReferenceUrls, styleInstruction, logoUrl);
+              images = await generateWithOpenRouter(conn as Conn, promptToUse, quantityForApi, (config.dimensions as string) || "1:1", subjectImageUrls, styleReferenceUrls, styleInstruction, logoUrl, scenarioPhotoUrls);
             } else if (apiUrl.includes("generativelanguage") || conn.provider?.toLowerCase() === "google") {
               providerLabel = "google";
               const imageSize = normalizeImageSize(config.image_size);
-              images = await generateWithGoogleGemini(conn as Conn, promptToUse, quantity, (config.dimensions as string) || "1:1", imageSize, subjectImageUrls, styleReferenceUrls, styleInstruction, logoUrl);
+              images = await generateWithGoogleGemini(conn as Conn, promptToUse, quantityForApi, (config.dimensions as string) || "1:1", imageSize, subjectImageUrls, styleReferenceUrls, styleInstruction, logoUrl, scenarioPhotoUrls);
             }
           } catch (apiErr) {
             await supabase.from("neurodesign_generation_runs").update({ error_message: String(apiErr), completed_at: new Date().toISOString() }).eq("id", run.id);
-            images = await mockGenerate(config, quantity);
+            images = await mockGenerate(config, quantityForApi);
             providerLabel = "mock_fallback";
           }
         }
       }
-      if (images.length === 0) images = await mockGenerate(config, quantity);
+      if (images.length === 0) images = await mockGenerate(config, quantityForApi);
     } catch (e) {
       await supabase.from("neurodesign_generation_runs").update({ status: "error", error_message: String(e), completed_at: new Date().toISOString() }).eq("id", run.id);
       return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } });

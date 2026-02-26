@@ -67,14 +67,16 @@ export function mergeFlowInputDataIntoConfig(inputData) {
     };
   }
 
-  // subject → subject_gender, subject_description, subject_image_urls
+  // subject → subject_gender, subject_description, subject_image_urls, quantity (1 por foto)
   const subjectEntry = inputData.subject?.data;
   if (subjectEntry) {
     if (subjectEntry.subject_gender === 'masculino' || subjectEntry.subject_gender === 'feminino') overrides.subject_gender = subjectEntry.subject_gender;
     if (typeof subjectEntry.subject_description === 'string' && subjectEntry.subject_description.trim()) overrides.subject_description = subjectEntry.subject_description.trim();
     const urls = subjectEntry.subject_image_urls;
     if (Array.isArray(urls) && urls.length > 0) {
-      overrides.subject_image_urls = urls.filter((u) => typeof u === 'string' && u.trim()).slice(0, 2);
+      const subjectUrls = urls.filter((u) => typeof u === 'string' && u.trim()).slice(0, 2);
+      overrides.subject_image_urls = subjectUrls;
+      overrides.quantity = Math.min(5, Math.max(1, subjectUrls.length));
     }
   }
 
@@ -87,7 +89,7 @@ const SUPPORT_TYPE_KEYS = {
   image_logo: ['logo_url'],
   colors: ['ambient_color', 'rim_light_color', 'fill_light_color'],
   styles: ['visual_attributes'],
-  subject: ['subject_gender', 'subject_description', 'subject_image_urls'],
+  subject: ['subject_gender', 'subject_description', 'subject_image_urls', 'quantity'],
 };
 
 /**

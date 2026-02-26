@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { ChevronLeft, Loader2, Sparkles, Star, Copy, Link2, Eye, Wand2, FileText, Plus, Edit } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import EditWithAiModal from '@/components/strategic-planner/EditWithAiModal';
+import ReactMarkdown from 'react-markdown';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 
 const CONTEXT_INSTRUCTION = `Na mensagem do usuário pode aparecer um bloco [CONTEXTO] com dados do módulo, cliente, campanha e documentos de contexto. Use sempre essas informações para personalizar e fundamentar sua resposta. Não peça ao usuário dados que já constem no [CONTEXTO].`;
@@ -617,8 +618,12 @@ const ModuleChat = () => {
                 <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
                 <p className="text-muted-foreground">Gerando conteúdo...</p>
               </div>}
-              <div className="prose prose-sm dark:prose-invert max-w-none flex-grow overflow-y-auto p-4 rounded-md bg-muted min-h-[300px] whitespace-pre-wrap">
-                {generatedContent || <span className="text-muted-foreground">O resultado aparecerá aqui.</span>}
+              <div className="flex-grow overflow-y-auto p-4 rounded-md bg-muted min-h-[300px]">
+                {generatedContent ? (
+                  <ReactMarkdown className="prose prose-sm dark:prose-invert max-w-none">{generatedContent}</ReactMarkdown>
+                ) : (
+                  <span className="text-muted-foreground">O resultado aparecerá aqui.</span>
+                )}
               </div>
               {generatedContent && !isLoading && (
                 <div className="flex items-center gap-2 mt-4">
@@ -650,8 +655,10 @@ const ModuleChat = () => {
               Visualize o conteúdo completo do item selecionado.
             </DialogDescription>
           </DialogHeader>
-          <div className="prose prose-sm dark:prose-invert max-w-none p-4 rounded-md bg-muted whitespace-pre-wrap">
-            {contentToView}
+          <div className="p-4 rounded-md bg-muted">
+            {contentToView ? (
+              <ReactMarkdown className="prose prose-sm dark:prose-invert max-w-none">{contentToView}</ReactMarkdown>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

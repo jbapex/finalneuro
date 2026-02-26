@@ -416,7 +416,7 @@ export default function RefineImageForm({
                     placeholder="Ex.: PLANNING 2025, slogan…"
                     value={selectionText}
                     onChange={(e) => setSelectionText(e.target.value)}
-                    className="w-full rounded-md border border-input bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full rounded-md border border-input bg-muted px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label="Texto a inserir na região selecionada"
                   />
                 </div>
@@ -427,14 +427,14 @@ export default function RefineImageForm({
                     placeholder="Ex.: Montserrat, Inter, Arial"
                     value={selectionFont}
                     onChange={(e) => setSelectionFont(e.target.value)}
-                    className="w-full rounded-md border border-input bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="w-full rounded-md border border-input bg-muted px-3 py-2 text-base sm:text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     aria-label="Nome da fonte (opcional)"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground block">Estilo da fonte (opcional)</label>
                   <Select value={selectionFontStyle || 'none'} onValueChange={(v) => setSelectionFontStyle(v === 'none' ? '' : v)}>
-                    <SelectTrigger className="w-full max-w-[280px] h-9 bg-muted border-border text-foreground text-sm">
+                    <SelectTrigger className="w-full max-w-[280px] h-9 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-sm">
                       <SelectValue placeholder="Deixar modelo escolher" />
                     </SelectTrigger>
                     <SelectContent className="bg-popover text-popover-foreground">
@@ -642,9 +642,9 @@ export default function RefineImageForm({
           <p className="text-xs text-muted-foreground font-medium">Opções avançadas (opcional)</p>
           <div className="flex flex-wrap gap-4">
             <div>
-              <label className="text-xs text-muted-foreground block mb-1">Dimensões</label>
+              <label className="text-xs text-muted-foreground block mb-1" title="Altera a proporção da arte; a imagem será recriada para preencher o novo formato.">Dimensões</label>
               <Select value={refineDimensions} onValueChange={setRefineDimensions}>
-                <SelectTrigger className="w-[140px] h-8 bg-muted border-border text-foreground text-xs">
+                <SelectTrigger className="w-full sm:w-[140px] h-8 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover text-popover-foreground">
@@ -657,7 +657,7 @@ export default function RefineImageForm({
             <div>
               <label className="text-xs text-muted-foreground block mb-1">Qualidade</label>
               <Select value={refineImageSize} onValueChange={setRefineImageSize}>
-                <SelectTrigger className="w-[100px] h-8 bg-muted border-border text-foreground text-xs">
+                <SelectTrigger className="w-full sm:w-[100px] h-8 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover text-popover-foreground">

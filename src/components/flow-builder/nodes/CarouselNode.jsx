@@ -19,6 +19,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { mergeFlowInputDataIntoConfig, filterOverridesByDisabledSupportTypes } from '@/lib/neurodesign/flowConfigMerge';
 import { neuroDesignDefaultConfig } from '@/lib/neurodesign/defaultConfig';
+import { sanitizeNeuroDesignConfigFromAI } from '@/lib/neurodesign/sanitizeConfigFromAI';
 import NeuroDesignFlowModal from '@/components/flow-builder/modals/NeuroDesignFlowModal';
 import RefineImageModal from '@/components/flow-builder/modals/RefineImageModal';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
@@ -311,7 +312,13 @@ const CarouselNode = memo(({ data, id }) => {
     const fullPrompt = (contextPromptForImage + '\n\n' + slidePrompt).trim();
     const flowOverrides = mergeFlowInputDataIntoConfig(inputData || {});
     const disabled = slides[idx]?.disabledSupportTypes ?? [];
-    const flowFiltered = filterOverridesByDisabledSupportTypes(flowOverrides, disabled);
+    let flowFiltered = filterOverridesByDisabledSupportTypes(flowOverrides, disabled);
+    // Regra fixa: logo e sujeito principal conectados são sempre usados
+    if (flowOverrides.logo_url) flowFiltered = { ...flowFiltered, logo_url: flowOverrides.logo_url };
+    if (flowOverrides.subject_gender !== undefined) flowFiltered = { ...flowFiltered, subject_gender: flowOverrides.subject_gender };
+    if (flowOverrides.subject_description !== undefined) flowFiltered = { ...flowFiltered, subject_description: flowOverrides.subject_description };
+    if (flowOverrides.subject_image_urls !== undefined) flowFiltered = { ...flowFiltered, subject_image_urls: flowOverrides.subject_image_urls };
+    const slideOverrides = slides[idx]?.configOverrides && typeof slides[idx].configOverrides === 'object' ? slides[idx].configOverrides : {};
     return {
       ...neuroDesignDefaultConfig(),
       ...flowFiltered,
@@ -319,6 +326,7 @@ const CarouselNode = memo(({ data, id }) => {
       image_size: imageSize,
       user_ai_connection_id: selectedImageConnectionId,
       additional_prompt: fullPrompt,
+      ...slideOverrides,
     };
   }, [slideIndexForNeuroDesign, slides, contextPromptForImage, inputData, dimensions, imageSize, selectedImageConnectionId]);
 
@@ -539,6 +547,11 @@ const CarouselNode = memo(({ data, id }) => {
     const newNumSlides = Math.min(MAX_SLIDES, Math.max(MIN_SLIDES, parsedNum));
     const newOrientations = [...orientations];
     while (newOrientations.length < newNumSlides) newOrientations.push('');
+    for (let i = 0; i < newNumSlides; i++) {
+      if (!String(newOrientations[i] ?? slides[i]?.orientation ?? '').trim()) {
+        newOrientations[i] = i === 0 ? 'Capa' : `Lâmina ${i + 1}`;
+      }
+    }
     const newPrompts = slidePrompts.slice(0, newNumSlides);
     while (newPrompts.length < newNumSlides) newPrompts.push('');
     const newSlides = Array.from({ length: newNumSlides }, (_, i) => {
@@ -569,14 +582,29 @@ const CarouselNode = memo(({ data, id }) => {
       return;
     }
     const selectedIntegration = llmIntegrations.find((i) => i.id === selectedLlmIdForFill);
-    const instruction = `Analise o conteúdo completo abaixo (dados do fluxo: cliente, campanha, contextos, conteúdo gerado por agentes). Com base nisso, defina quantas lâminas o carrossel deve ter (entre ${MIN_SLIDES} e ${MAX_SLIDES}) e, para cada lâmina, retorne:
-- orientation: resumo curto em uma linha (ex.: "Capa: logo e título principal", "Problema: gargalo de vendas").
-- prompt: brief completo para geração de imagem daquela lâmina (cena, texto, descrição visual).
+    const instruction = `Analise o conteúdo completo abaixo (dados do fluxo: cliente, campanha, contextos, conteúdo gerado por agentes). Com base nisso, defina quantas lâminas o carrossel deve ter (entre ${MIN_SLIDES} e ${MAX_SLIDES}) e, para cada lâmina, preencha:
 
-Responda APENAS com um JSON válido, sem texto antes ou depois, neste formato exato:
-{"numSlides": N, "slides": [{"orientation": "...", "prompt": "..."}]}
+Padrão obrigatório por lâmina:
+- orientation: uma linha, rótulo da lâmina (ex.: "Capa: logo e título principal", "Problema: gargalo de vendas", "Solução: benefício X").
+- prompt: brief completo para geração da imagem (cena, mood, texto a exibir, descrição visual; pode ser múltiplas linhas).
 
-Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo", "prompt": "Imagem de capa com logo central e título da campanha em destaque"}, {"orientation": "Problema", "prompt": "..."}, {"orientation": "Solução", "prompt": "..."}]}`;
+Além disso, para cada lâmina você pode preencher config (objeto opcional) com as chaves do Neuro Designer que fizerem sentido para aquela lâmina. Use apenas as chaves que conseguir inferir do conteúdo. Valores exatos:
+- quantity: número 1 a 5 (quantidade de pessoas)
+- subject_enabled: true ou false
+- subject_gender: "masculino" ou "feminino"
+- subject_description: string (pose, roupa, expressão)
+- shot_type: "close-up" ou "medio busto" ou "americano"
+- layout_position: "esquerda" ou "centro" ou "direita"
+- niche_project: string (nicho do negócio)
+- environment: string (cenário, ambiente)
+- dimensions: "1:1" ou "4:5" ou "9:16" ou "16:9"
+- text_enabled: true ou false. Se true: headline_h1, subheadline_h2, cta_button_text (strings)
+- headline_h1, subheadline_h2, cta_button_text: texto a aparecer na imagem
+
+Responda APENAS com um JSON válido, sem texto antes ou depois:
+{"numSlides": N, "slides": [{"orientation": "...", "prompt": "...", "config": { ... }}, ...]}
+
+Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo", "prompt": "Imagem de capa com logo central e título da campanha em destaque", "config": {"quantity": 1, "shot_type": "medio busto", "niche_project": "marketing digital"}}, {"orientation": "Problema", "prompt": "...", "config": {}}, ...]}`;
 
     const contentForModel = fullContent.length > 12000 ? fullContent.slice(0, 12000) + '\n\n[... conteúdo truncado para caber no contexto ...]' : fullContent;
     const userMessage = instruction + '\n\n---\n\nConteúdo completo do fluxo (cliente, campanha, contextos, agentes):\n\n' + contentForModel;
@@ -599,18 +627,29 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
       }
       const n = Math.min(MAX_SLIDES, Math.max(MIN_SLIDES, Math.floor(Number(parsed.numSlides)) || parsed.slides.length));
       const slideList = parsed.slides.slice(0, n);
-      while (slideList.length < n) slideList.push({ orientation: '', prompt: '' });
+      while (slideList.length < n) slideList.push({ orientation: '', prompt: '', config: {} });
       const newOrientations = slideList.map((s) => (s && typeof s.orientation === 'string' ? s.orientation : String(s?.orientation ?? '')));
       const newPrompts = slideList.map((s) => (s && typeof s.prompt === 'string' ? s.prompt : String(s?.prompt ?? '')));
+      const newSlides = Array.from({ length: n }, (_, i) => {
+        const s = slideList[i] || {};
+        const rawConfig = s.config && typeof s.config === 'object' ? s.config : {};
+        const configOverrides = Object.keys(rawConfig).length > 0 ? sanitizeNeuroDesignConfigFromAI(rawConfig) : undefined;
+        return {
+          ...(slides[i] || {}),
+          orientation: newOrientations[i],
+          prompt: newPrompts[i],
+          ...(configOverrides && Object.keys(configOverrides).length > 0 ? { configOverrides } : {}),
+        };
+      });
       onUpdateNodeData(id, {
         numSlides: n,
         orientations: newOrientations,
-        slides: Array.from({ length: n }, (_, i) => ({ ...(slides[i] || {}), orientation: newOrientations[i], prompt: newPrompts[i] })),
+        slides: newSlides,
         selectedLlmIdForFill: selectedLlmIdForFill,
       });
       setLocalOrientations(newOrientations);
       setLocalPrompts(newPrompts);
-      toast({ title: 'Lâminas preenchidas com IA', description: `${n} lâmina(s) configurada(s). Ajuste se quiser e clique em Salvar.` });
+      toast({ title: 'Lâminas preenchidas com IA', description: `${n} lâmina(s) configurada(s) com orientação, brief e config do Neuro Designer. Ajuste se quiser e clique em Salvar.` });
     } catch (e) {
       toast({ title: 'Erro ao preencher com IA', description: e?.message || 'Tente outra conexão ou verifique os dados.', variant: 'destructive' });
     } finally {
@@ -674,8 +713,14 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
         };
         const flowOverrides = mergeFlowInputDataIntoConfig(freshInputData);
         const disabled = slides[slideIndex]?.disabledSupportTypes ?? [];
-        const flowFiltered = filterOverridesByDisabledSupportTypes(flowOverrides, disabled);
-        const config = { ...baseConfig, ...flowFiltered };
+        let flowFiltered = filterOverridesByDisabledSupportTypes(flowOverrides, disabled);
+        // Regra fixa: logo e sujeito principal conectados são sempre usados na geração
+        if (flowOverrides.logo_url) flowFiltered = { ...flowFiltered, logo_url: flowOverrides.logo_url };
+        if (flowOverrides.subject_gender !== undefined) flowFiltered = { ...flowFiltered, subject_gender: flowOverrides.subject_gender };
+        if (flowOverrides.subject_description !== undefined) flowFiltered = { ...flowFiltered, subject_description: flowOverrides.subject_description };
+        if (flowOverrides.subject_image_urls !== undefined) flowFiltered = { ...flowFiltered, subject_image_urls: flowOverrides.subject_image_urls };
+        const slideOverrides = slides[slideIndex]?.configOverrides && typeof slides[slideIndex].configOverrides === 'object' ? slides[slideIndex].configOverrides : {};
+        const config = { ...baseConfig, ...flowFiltered, ...slideOverrides };
         const { data: result, error } = await supabase.functions.invoke(fnName, {
           body: {
             projectId: proj.id,
@@ -861,7 +906,11 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
                 {Array.from({ length: numSlides }).map((_, i) => {
                   const slide = slides[i] || {};
                   const isGenerating = generatingSlideIndex === i;
-                  const connectedSupports = getConnectedSupportTypes(inputData);
+                  const allConnectedSupports = getConnectedSupportTypes(inputData);
+                  // Logo e sujeito principal são regra fixa: não aparecem como opção desativável
+                  const FIXED_SUPPORT_TYPES = ['image_logo', 'subject'];
+                  const connectedSupports = allConnectedSupports.filter(({ id }) => !FIXED_SUPPORT_TYPES.includes(id));
+                  const hasFixedSupports = allConnectedSupports.some(({ id }) => FIXED_SUPPORT_TYPES.includes(id));
                   const disabledTypes = Array.isArray(slide.disabledSupportTypes) ? slide.disabledSupportTypes : [];
                   const toggleSupportForSlide = (supportId, useInSlide) => {
                     const newSlides = slides.map((s, idx) => {
@@ -902,7 +951,7 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
                             size="sm"
                             variant="outline"
                             className="h-8 w-8 p-0 shrink-0"
-                            disabled={connectedSupports.length === 0}
+                            disabled={allConnectedSupports.length === 0}
                             title="Suporte ao Neuro Designer nesta lâmina"
                           >
                             <SlidersHorizontal className="w-4 h-4" />
@@ -910,11 +959,14 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
                         </PopoverTrigger>
                         <PopoverContent className="w-64" align="start">
                           <p className="font-medium text-sm mb-2">Usar nesta lâmina</p>
-                          {connectedSupports.length === 0 ? (
+                          {allConnectedSupports.length === 0 ? (
                             <p className="text-xs text-muted-foreground">Nenhum nó de suporte conectado.</p>
                           ) : (
                             <div className="space-y-2">
-                              {connectedSupports.map(({ id: supportId, label }) => (
+                              {hasFixedSupports && (
+                                <p className="text-xs text-muted-foreground">Logo e Sujeito principal: sempre usados quando conectados.</p>
+                              )}
+                              {connectedSupports.length > 0 && connectedSupports.map(({ id: supportId, label }) => (
                                 <label key={supportId} className="flex items-center gap-2 cursor-pointer text-sm">
                                   <Checkbox
                                     checked={!disabledTypes.includes(supportId)}
@@ -1052,7 +1104,7 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
             <div className="space-y-2 rounded-md border bg-muted/20 p-2">
               <Label className="text-xs font-medium">Preencher com IA</Label>
               <p className="text-xs text-muted-foreground">
-                Use os dados dos nós conectados; a IA analisa e preenche orientação e brief de cada lâmina (e pode sugerir mais lâminas).
+                Use os dados dos nós conectados; a IA analisa e preenche orientação, brief e configurações do Neuro Designer de cada lâmina (quantidade de sujeitos, plano, nicho, texto na imagem, etc.).
               </p>
               <div className="flex gap-2">
                 <Select
@@ -1102,33 +1154,56 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
                 Use o brief para descrever a cena ou texto da lâmina; facilita a geração de imagens depois.
               </p>
               <div className="space-y-3">
-                {localOrientations.map((val, i) => (
-                  <div key={i} className="space-y-1 rounded-md border p-2 bg-muted/20">
-                    <Label className="text-xs font-medium">
-                      Lâmina {i + 1}{i === 0 ? ' (capa)' : ''}
-                    </Label>
-                    <Input
-                      value={val}
-                      onChange={(e) => {
-                        const next = [...localOrientations];
-                        next[i] = e.target.value;
-                        setLocalOrientations(next);
-                      }}
-                      placeholder={i === 0 ? 'Ex: Capa: logo e título principal' : `Ex: Tema da lâmina ${i + 1}`}
-                      className="text-sm"
-                    />
-                    <Textarea
-                      value={localPrompts[i] ?? ''}
-                      onChange={(e) => {
-                        const next = [...localPrompts];
-                        next[i] = e.target.value;
-                        setLocalPrompts(next);
-                      }}
-                      placeholder="Brief para criação da imagem (opcional)"
-                      className="min-h-[60px] text-xs resize-y"
-                    />
-                  </div>
-                ))}
+                {localOrientations.map((val, i) => {
+                  const overrides = slides[i]?.configOverrides && typeof slides[i].configOverrides === 'object' ? slides[i].configOverrides : {};
+                  const hasOverrides = Object.keys(overrides).length > 0;
+                  return (
+                    <div key={i} className="space-y-1 rounded-md border p-2 bg-muted/20">
+                      <Label className="text-xs font-medium">
+                        Lâmina {i + 1}{i === 0 ? ' (capa)' : ''}
+                      </Label>
+                      <Input
+                        value={val}
+                        onChange={(e) => {
+                          const next = [...localOrientations];
+                          next[i] = e.target.value;
+                          setLocalOrientations(next);
+                        }}
+                        placeholder={i === 0 ? 'Ex: Capa: logo e título principal' : `Ex: Tema da lâmina ${i + 1}`}
+                        className="text-sm"
+                      />
+                      <Textarea
+                        value={localPrompts[i] ?? ''}
+                        onChange={(e) => {
+                          const next = [...localPrompts];
+                          next[i] = e.target.value;
+                          setLocalPrompts(next);
+                        }}
+                        placeholder="Brief para criação da imagem (opcional)"
+                        className="min-h-[60px] text-xs resize-y"
+                      />
+                      <details className="text-xs text-muted-foreground mt-1">
+                        <summary className="cursor-pointer hover:text-foreground">
+                          Configuração Neuro Designer desta lâmina
+                        </summary>
+                        <div className="mt-1 pl-2 border-l border-muted-foreground/30">
+                          {hasOverrides ? (
+                            <ul className="space-y-0.5 list-none">
+                              {Object.entries(overrides).map(([k, v]) => (
+                                <li key={k}>
+                                  <span className="font-medium">{k}:</span>{' '}
+                                  {typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v)}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p>Usar padrão do fluxo (e nós conectados).</p>
+                          )}
+                        </div>
+                      </details>
+                    </div>
+                  );
+                })}
               </div>
             </div>
             <Button onClick={handleSaveConfig} className="w-full">

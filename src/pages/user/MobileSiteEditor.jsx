@@ -6,7 +6,6 @@ import { Helmet } from 'react-helmet';
 import { Loader2, ArrowLeft, MessageSquare, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
-import { AnimatePresence, motion } from 'framer-motion';
 
 import ChatPanel from '@/components/site-builder/ChatPanel';
 import PreviewPanel from '@/components/site-builder/PreviewPanel';
@@ -118,27 +117,6 @@ const MobileSiteEditor = () => {
     setSelectedElement(null);
   };
 
-  const renderActiveView = () => {
-    const commonProps = {
-      htmlContent,
-      setHtmlContent,
-      selectedElement,
-      setSelectedElement,
-      onOpenImageBank: () => setIsImageBankOpen(true),
-      isBuilding,
-      setIsBuilding,
-    };
-
-    switch (activeView) {
-      case 'chat':
-        return <ChatPanel {...commonProps} />;
-      case 'preview':
-        return <PreviewPanel {...commonProps} />;
-      default:
-        return null;
-    }
-  };
-
   if (isLoading || !project) {
     return (
       <div className="flex items-center justify-center h-screen bg-background">
@@ -162,19 +140,30 @@ const MobileSiteEditor = () => {
           <h1 className="text-lg font-semibold truncate">{project.name}</h1>
         </header>
 
-        <main className="flex-grow overflow-y-auto pb-20">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeView}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-              className="h-full"
-            >
-              {renderActiveView()}
-            </motion.div>
-          </AnimatePresence>
+        <main className="flex-grow overflow-y-auto pb-20 relative">
+          {/* Ambos montados para o iframe do preview não recarregar ao trocar de aba */}
+          <div className={activeView === 'chat' ? 'h-full' : 'hidden'}>
+            <ChatPanel
+              htmlContent={htmlContent}
+              setHtmlContent={setHtmlContent}
+              selectedElement={selectedElement}
+              setSelectedElement={setSelectedElement}
+              onOpenImageBank={() => setIsImageBankOpen(true)}
+              isBuilding={isBuilding}
+              setIsBuilding={setIsBuilding}
+            />
+          </div>
+          <div className={activeView === 'preview' ? 'h-full' : 'hidden'}>
+            <PreviewPanel
+              htmlContent={htmlContent}
+              setHtmlContent={setHtmlContent}
+              selectedElement={selectedElement}
+              setSelectedElement={setSelectedElement}
+              onOpenImageBank={() => setIsImageBankOpen(true)}
+              isBuilding={isBuilding}
+              setIsBuilding={setIsBuilding}
+            />
+          </div>
         </main>
 
         <footer className="fixed bottom-0 left-0 right-0 h-20 bg-background/80 backdrop-blur-lg border-t border-border z-50">

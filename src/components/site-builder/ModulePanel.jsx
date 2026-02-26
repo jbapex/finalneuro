@@ -4,7 +4,9 @@ import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { GripVertical, PlusCircle, Trash2, Edit, Check, X, PanelRight } from 'lucide-react';
+import { GripVertical, PlusCircle, Trash2, Edit, Check, X, PanelRight, Palette } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Label } from '@/components/ui/label';
 import { v4 as uuidv4 } from 'uuid';
 import { cn } from '@/lib/utils';
 
@@ -12,6 +14,9 @@ const SortableModuleItem = ({ module, activeModule, setActiveModule, onUpdate, o
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: module.id });
   const [isEditing, setIsEditing] = useState(false);
   const [newName, setNewName] = useState(module.name);
+  const [colorsOpen, setColorsOpen] = useState(false);
+  const [localBg, setLocalBg] = useState(module.backgroundColor || '#f3f4f6');
+  const [localText, setLocalText] = useState(module.textColor || '#111827');
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -23,6 +28,18 @@ const SortableModuleItem = ({ module, activeModule, setActiveModule, onUpdate, o
       onUpdate(module.id, { name: newName });
       setIsEditing(false);
     }
+  };
+
+  const handleApplyColors = () => {
+    onUpdate(module.id, { backgroundColor: localBg, textColor: localText });
+    setColorsOpen(false);
+  };
+
+  const handleClearColors = () => {
+    setLocalBg('#f3f4f6');
+    setLocalText('#111827');
+    onUpdate(module.id, { backgroundColor: undefined, textColor: undefined });
+    setColorsOpen(false);
   };
 
   return (
@@ -54,7 +71,36 @@ const SortableModuleItem = ({ module, activeModule, setActiveModule, onUpdate, o
         )}
       </div>
       {!isCollapsed && (
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+          <Popover open={colorsOpen} onOpenChange={(open) => { setColorsOpen(open); if (open) { setLocalBg(module.backgroundColor || '#f3f4f6'); setLocalText(module.textColor || '#111827'); } }}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7" title="Cores da seção">
+                <Palette className="w-4 h-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-64" align="start">
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-xs">Fundo</Label>
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={localBg} onChange={(e) => setLocalBg(e.target.value)} className="w-10 h-8 rounded border cursor-pointer" />
+                    <Input value={localBg} onChange={(e) => setLocalBg(e.target.value)} className="flex-1 h-8 text-xs font-mono" />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs">Texto</Label>
+                  <div className="flex gap-2 items-center">
+                    <input type="color" value={localText} onChange={(e) => setLocalText(e.target.value)} className="w-10 h-8 rounded border cursor-pointer" />
+                    <Input value={localText} onChange={(e) => setLocalText(e.target.value)} className="flex-1 h-8 text-xs font-mono" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" className="flex-1" onClick={handleApplyColors}>Aplicar</Button>
+                  <Button size="sm" variant="outline" onClick={handleClearColors}>Limpar</Button>
+                </div>
+              </div>
+            </PopoverContent>
+          </Popover>
           {isEditing ? (
             <>
               <Button variant="ghost" size="icon" className="h-7 w-7" onClick={handleUpdateName}><Check className="w-4 h-4 text-green-500" /></Button>
@@ -72,7 +118,7 @@ const SortableModuleItem = ({ module, activeModule, setActiveModule, onUpdate, o
   );
 };
 
-const ModulePanel = ({ isCollapsed, modules, setModules, activeModule, setActiveModule }) => {
+const ModulePanel = ({ isCollapsed, modules, setModules, activeModule, setActiveModule, updateProjectInDb }) => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newModuleName, setNewModuleName] = useState('');
 
@@ -93,6 +139,7 @@ const ModulePanel = ({ isCollapsed, modules, setModules, activeModule, setActive
   const handleUpdateModule = (moduleId, updates) => {
     const newStructure = modules.map(m => m.id === moduleId ? { ...m, ...updates } : m);
     setModules(newStructure);
+    if (updateProjectInDb) updateProjectInDb({ page_structure: newStructure });
   };
 
   const handleDeleteModule = (moduleId) => {

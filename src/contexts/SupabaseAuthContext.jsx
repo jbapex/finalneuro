@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
@@ -7,12 +7,16 @@ const AuthContext = createContext(undefined);
 
 export const AuthProvider = ({ children }) => {
   const { toast } = useToast();
+  const userRef = useRef(null);
+  const signOutInitiatedByUserRef = useRef(false);
 
   const [user, setUser] = useState(null);
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+
+  userRef.current = user;
 
   const fetchProfile = useCallback(async (userId) => {
     if (!userId) {
@@ -98,6 +102,16 @@ export const AuthProvider = ({ children }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        const hadUser = !!userRef.current;
+        const hasSession = !!session?.user;
+        if (hadUser && !hasSession && !signOutInitiatedByUserRef.current) {
+          toast({
+            title: "Sessão expirada",
+            description: "Sua sessão não é mais válida. Faça login novamente.",
+            variant: "destructive",
+          });
+        }
+        signOutInitiatedByUserRef.current = false;
         if (event === 'SIGNED_OUT') {
           setProfile(null);
           setProfileLoading(false);
@@ -148,12 +162,16 @@ export const AuthProvider = ({ children }) => {
   }, [toast]);
 
   const signOut = useCallback(async () => {
+    signOutInitiatedByUserRef.current = true;
     let { error } = await supabase.auth.signOut();
 
-    // Se o servidor diz que a sessão não existe, limpa só no cliente para permitir novo login
+    // 403 = sem sessão válida para encerrar; tratar como "já deslogado" e não chamar signOut(scope: 'local')
+    const is403 = error?.status === 403;
     const sessionInvalid = error?.message?.toLowerCase().includes('session') && error?.message?.toLowerCase().includes('does not exist');
-    if (error && sessionInvalid) {
-      await supabase.auth.signOut({ scope: 'local' });
+    if (error && (is403 || sessionInvalid)) {
+      if (!is403) {
+        await supabase.auth.signOut({ scope: 'local' });
+      }
       error = null;
       toast({
         title: "Sessão encerrada",

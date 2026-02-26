@@ -48,7 +48,10 @@ const UserImageConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFin
       if (error) throw new Error(error.message);
       const list = data?.models ?? data?.data ?? (Array.isArray(data) ? data : []);
       const imageModels = Array.isArray(list)
-        ? list.filter((m) => m?.architecture?.output_modalities?.includes?.('image'))
+        ? list.filter((m) => {
+            const mods = m?.architecture?.output_modalities ?? m?.output_modalities;
+            return Array.isArray(mods) && mods.includes('image');
+          })
         : [];
       const sorted = imageModels.slice().sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || ''));
       setOpenRouterImageModels(sorted);

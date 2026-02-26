@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Brain, Lock, Mail, User, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,18 @@ const AuthPage = () => {
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (searchParams.get('session_expired') === '1') {
+      toast({
+        title: 'Sessão expirada',
+        description: 'Sua sessão expirou ou foi encerrada. Faça login novamente.',
+        variant: 'destructive',
+      });
+    }
+  }, [searchParams, toast]);
 
   const handleInputChange = (e) => {
     const { id, value } = e.target;
@@ -47,9 +58,32 @@ const AuthPage = () => {
           toast({ title: "Login realizado com sucesso!", description: "Bem-vindo de volta!" });
         }
       } else {
+        // Validação antes do signup: senha mínima 6 caracteres e e-mail válido
+        const emailTrimmed = (formData.email || '').trim();
+        const password = formData.password || '';
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(emailTrimmed)) {
+          toast({
+            title: "E-mail inválido",
+            description: "Digite um e-mail válido (ex.: seu@email.com).",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+        if (password.length < 6) {
+          toast({
+            title: "Senha muito curta",
+            description: "A senha deve ter no mínimo 6 caracteres.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+
         const signUpPromise = supabase.auth.signUp({
-          email: formData.email,
-          password: formData.password,
+          email: emailTrimmed,
+          password,
           options: {
             data: {
               name: formData.name,
@@ -67,13 +101,21 @@ const AuthPage = () => {
     } catch (error) {
       const raw = error?.message || '';
       const status = error?.status;
+      const isAlreadyRegistered = /user already registered|already been registered|email.*already/i.test(raw);
       const isNetwork = /fetch|network|failed to fetch|cors|timeout|unreachable/i.test(raw) || error?.name === 'TypeError';
       const isTimeout = raw.includes('demorando');
       const isCredentialError = /invalid.*credential|invalid.*login|email not confirmed/i.test(raw);
       const isBadKey = (status === 401 || status === 403) && !isCredentialError && /jwt|key|api|token/i.test(raw);
       let title = "Erro de Autenticação";
       let message = raw || "Verifique suas credenciais e tente novamente.";
-      if (isNetwork || isTimeout) {
+      if (isAlreadyRegistered || (status === 422 && /already|registered/i.test(raw))) {
+        title = "E-mail já cadastrado";
+        message = "Este e-mail já está em uso. Faça login ou use \"Esqueci a senha\" para recuperar o acesso.";
+        setIsLogin(true);
+      } else if (status === 422) {
+        title = "Cadastro não realizado";
+        message = raw || "Dados inválidos. Verifique: e-mail (não utilizado em outra conta) e senha (mínimo 6 caracteres).";
+      } else if (isNetwork || isTimeout) {
         title = "Sem conexão com o servidor";
         message = "Não foi possível conectar ao Supabase. Verifique a URL em .env.local e sua conexão.";
       } else if (isBadKey) {
