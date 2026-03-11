@@ -49,6 +49,8 @@ const KeywordPlanner = () => {
     const [results, setResults] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [geo, setGeo] = useState('BR');
+    const [hl, setHl] = useState('pt-BR');
 
     const handleSearch = async (e) => {
         e.preventDefault();
@@ -62,15 +64,24 @@ const KeywordPlanner = () => {
 
         try {
             const { data, error: functionError } = await supabase.functions.invoke('keyword-planner', {
-                body: { keyword },
+                body: { keyword, geo, hl },
             });
 
             if (functionError) {
               const errorBody = functionError.context?.json ? await functionError.context.json() : { error: functionError.message };
               throw new Error(errorBody.error);
             }
-            
-            setResults(data);
+            if (functionError) {
+              const errorBody = functionError.context?.json ? await functionError.context.json() : { error: functionError.message };
+              throw new Error(errorBody.error);
+            }
+
+            if (data?.error) {
+              setResults(data.data || null);
+              setError(data.error);
+            } else {
+              setResults(data);
+            }
 
         } catch (err) {
             console.error(err);
@@ -105,28 +116,48 @@ const KeywordPlanner = () => {
 
                 <Card className="max-w-2xl mx-auto mb-8">
                     <CardContent className="p-6">
-                        <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4">
-                            <Input
-                                type="text"
-                                placeholder="Digite um tópico ou palavra-chave..."
-                                value={keyword}
-                                onChange={(e) => setKeyword(e.target.value)}
-                                className="flex-grow"
-                                disabled={loading}
-                            />
-                            <Button type="submit" disabled={loading} className="w-full sm:w-auto">
-                                {loading ? (
-                                    <>
-                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                        Pesquisando...
-                                    </>
-                                ) : (
-                                    <>
-                                        <Search className="w-4 h-4 mr-2" />
-                                        Pesquisar
-                                    </>
-                                )}
-                            </Button>
+                        <form onSubmit={handleSearch} className="flex flex-col gap-4">
+                            <div className="flex flex-col sm:flex-row gap-4">
+                                <Input
+                                    type="text"
+                                    placeholder="Digite um tópico ou palavra-chave..."
+                                    value={keyword}
+                                    onChange={(e) => setKeyword(e.target.value)}
+                                    className="flex-grow"
+                                    disabled={loading}
+                                />
+                                <div className="flex gap-2 sm:w-auto w-full">
+                                    <select
+                                      className="flex-1 h-10 rounded-md border bg-background px-2 text-sm"
+                                      value={geo}
+                                      onChange={(e) => {
+                                        const value = e.target.value;
+                                        setGeo(value);
+                                        setHl(value === 'US' ? 'en-US' : 'pt-BR');
+                                      }}
+                                      disabled={loading}
+                                    >
+                                      <option value="BR">Brasil (pt-BR)</option>
+                                      <option value="US">Estados Unidos (en-US)</option>
+                                    </select>
+                                    <Button type="submit" disabled={loading} className="w-full sm:w-auto">
+                                        {loading ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Pesquisando...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Search className="w-4 h-4 mr-2" />
+                                                Pesquisar
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                            <p className="text-xs text-muted-foreground">
+                              Dados em tempo real do Google Trends. Escolha o país para ver o que está em alta naquela região.
+                            </p>
                         </form>
                     </CardContent>
                 </Card>

@@ -9,6 +9,8 @@ const corsHeaders = {
 function buildPrompt(config: Record<string, unknown>): string {
   const textOff = config.text_enabled === false || config.text_enabled === "false";
   const subjectOff = config.subject_enabled === false || config.subject_enabled === "false";
+  const subjectModeRaw = (config.subject_mode as string) || "person";
+  const subjectMode = subjectModeRaw === "product" ? "product" : "person";
 
   const restrictionParts: string[] = [];
   if (textOff) restrictionParts.push("OBRIGATÓRIO: Não incluir texto, títulos, slogans ou botões na imagem. Imagem apenas visual, sem nenhuma escrita.");
@@ -53,7 +55,36 @@ function buildPrompt(config: Record<string, unknown>): string {
   }
 
   const textBlockParts: string[] = [];
-  if (!textOff && config.text_enabled) {
+  const isChurchArt = config.church_art === true;
+  if (isChurchArt) {
+    const fp = (config.footer_pastor_presidente as string)?.trim() || "";
+    const fi = (config.footer_igreja_nome as string)?.trim() || "";
+    const fl = (config.footer_igreja_local as string)?.trim() || "";
+    const fpl = (config.footer_pastor_local as string)?.trim() || "";
+    const footerLines: string[] = [];
+    footerLines.push("OBRIGATÓRIO - RODAPÉ FIXO na parte inferior da arte, em três colunas:");
+    if (fp) footerLines.push("À ESQUERDA o texto exatamente: \"" + fp + "\".");
+    else footerLines.push("À esquerda: deixar em branco ou não exibir.");
+    footerLines.push("AO CENTRO: a logo da igreja (imagem anexa) com o nome da igreja \"" + (fi || "[nome da igreja]") + "\" e abaixo \"" + (fl || "[local]") + "\".");
+    if (fpl) footerLines.push("À DIREITA o texto exatamente: \"" + fpl + "\".");
+    else footerLines.push("À direita: deixar em branco ou não exibir.");
+    footerLines.push("Manter esse layout fixo em três colunas.");
+    textBlockParts.push(footerLines.join(" "));
+    const h1 = (config.headline_h1 as string)?.trim() || "";
+    const subtheme = (config.headline_subtheme as string)?.trim() || "";
+    const subjectName = (config.subject_name as string)?.trim() || "";
+    const eventDate = (config.event_date as string)?.trim() || "";
+    const eventTime = (config.event_time as string)?.trim() || "";
+    const h2 = (config.subheadline_h2 as string)?.trim() || "";
+    const bodyLines: string[] = [];
+    if (h1) bodyLines.push("Título principal em destaque: \"" + h1 + "\".");
+    if (subtheme) bodyLines.push("Sub-tema/direção: \"" + subtheme + "\".");
+    if (subjectName) bodyLines.push("Preletor a exibir na arte: \"" + subjectName + "\" (use a(s) foto(s) do sujeito anexa(s) para o rosto).");
+    if (eventDate || eventTime) bodyLines.push("Data e horário do culto: \"" + [eventDate, eventTime].filter(Boolean).join(" às ") + "\".");
+    if (h2) bodyLines.push("Louvores/cantores: \"" + h2 + "\".");
+    if (bodyLines.length) textBlockParts.push("OBRIGATÓRIO - CONTEÚDO DA ARTE: " + bodyLines.join(" "));
+  }
+  if (!textOff && config.text_enabled && !isChurchArt) {
     const isFreeMode = (config.text_mode as string) === "free";
     if (isFreeMode) {
       const useRefText = config.use_reference_image_text === true || config.use_reference_image_text === "true";
@@ -129,10 +160,23 @@ function buildPrompt(config: Record<string, unknown>): string {
   const parts: string[] = [];
   if (!subjectOff) {
     const numSubjects = Math.min(Math.max(Number(config.quantity) || 1, 1), 5);
-    parts.push(`A imagem deve conter exatamente ${numSubjects} ${numSubjects === 1 ? "sujeito/pessoa" : "sujeitos/pessoas"}.`);
-    const gender = config.subject_gender === "masculino" ? "homem" : config.subject_gender === "feminino" ? "mulher" : "";
-    const subjectDesc = (config.subject_description as string)?.trim() || "";
-    if (gender || subjectDesc) parts.push(`Sujeito principal: ${[gender, subjectDesc].filter(Boolean).join(", ")}.`);
+    if (subjectMode === "product") {
+      parts.push(
+        `A imagem deve conter exatamente ${numSubjects} ${numSubjects === 1 ? "produto/objeto principal" : "produtos/objetos principais"}.`
+      );
+      const subjectDesc = (config.subject_description as string)?.trim() || "";
+      if (subjectDesc) {
+        parts.push(`Elemento principal (produto/objeto): ${subjectDesc}.`);
+      }
+      parts.push(
+        "OBRIGATÓRIO: Não incluir pessoas, rostos ou figuras humanas na imagem; o foco deve ser apenas o produto/objeto principal."
+      );
+    } else {
+      parts.push(`A imagem deve conter exatamente ${numSubjects} ${numSubjects === 1 ? "sujeito/pessoa" : "sujeitos/pessoas"}.`);
+      const gender = config.subject_gender === "masculino" ? "homem" : config.subject_gender === "feminino" ? "mulher" : "";
+      const subjectDesc = (config.subject_description as string)?.trim() || "";
+      if (gender || subjectDesc) parts.push(`Sujeito principal: ${[gender, subjectDesc].filter(Boolean).join(", ")}.`);
+    }
   }
   const niche = (config.niche_project as string)?.trim();
   if (niche) parts.push(`Contexto/nicho: ${niche}. Objetivo: criativo de marca/ads.`);
@@ -149,7 +193,10 @@ function buildPrompt(config: Record<string, unknown>): string {
   const layoutPos = config.layout_position as string;
   if (shot) parts.push(`Enquadramento: ${shot}.`);
   if (layoutPos) parts.push(`Posição do sujeito: ${layoutPos}.`);
-  if (!textOff && config.text_enabled) {
+  if (isChurchArt) {
+    parts.push("Arte de culto para igreja. Composição: tema principal, sub-tema ou direção, preletor com foto, data e horário, louvores; rodapé fixo em três colunas conforme instruções de texto.");
+  }
+  if (!textOff && config.text_enabled && !isChurchArt) {
     const isFreeModeParts = (config.text_mode as string) === "free";
     if (isFreeModeParts) {
       const useRefText = config.use_reference_image_text === true || config.use_reference_image_text === "true";
@@ -157,7 +204,7 @@ function buildPrompt(config: Record<string, unknown>): string {
       const fontDesc = (config.custom_text_font_description as string)?.trim() || "";
       if (useRefText) parts.push("Espaço reservado para texto na composição. O texto exibido deve ser o mesmo das imagens de referência anexas.");
       if (customText) {
-        parts.push("Espaço reservado para texto na composição.");
+    parts.push("Espaço reservado para texto na composição.");
         parts.push("O texto exibido na imagem deve ser exatamente: " + JSON.stringify(customText) + ".");
         if (fontDesc) parts.push("Fonte/estilo do texto: " + fontDesc + ".");
       }
@@ -240,7 +287,7 @@ function buildPrompt(config: Record<string, unknown>): string {
   if (textOff) {
     parts.push(`Formato: ${dims}.`);
   } else {
-    parts.push(`Formato: ${dims}. Safe area para texto.`);
+  parts.push(`Formato: ${dims}. Safe area para texto.`);
   }
   if ((config.additional_prompt as string)?.trim()) parts.push((config.additional_prompt as string).trim());
   const mainPrompt = parts.filter(Boolean).join(" ");
@@ -252,6 +299,8 @@ function buildPrompt(config: Record<string, unknown>): string {
 
 const SUBJECT_FACE_INSTRUCTION =
   "Obrigatório: use sempre o rosto e a identidade da pessoa da(s) imagem(ns) de sujeito principal como rosto na imagem gerada. Mantenha a mesma pessoa. ";
+const SUBJECT_PRODUCT_INSTRUCTION =
+  "Obrigatório: use a(s) imagem(ns) de sujeito principal apenas como referência visual do produto/objeto principal na imagem gerada. Não adicione pessoas com base nessas imagens. ";
 
 const PLACEHOLDER_IMAGE = "https://placehold.co/1024x1024/1a1a2e/eee?text=NeuroDesign";
 
@@ -284,14 +333,18 @@ async function generateWithOpenRouter(
   styleReferenceUrls: string[] = [],
   styleInstruction?: string,
   logoUrl?: string,
-  scenarioPhotoUrls: string[] = []
+  scenarioPhotoUrls: string[] = [],
+  subjectInstruction?: string
 ): Promise<{ url: string }[]> {
   const baseUrl = conn.api_url.replace(/\/$/, "");
   const url = `${baseUrl}/chat/completions`;
   const model = conn.default_model || "google/gemini-2.0-flash-exp:free";
   let textPrompt = prompt;
   if (scenarioPhotoUrls.length > 0) textPrompt = SCENARIO_INSTRUCTION + textPrompt;
-  if (subjectImageUrls.length > 0) textPrompt = SUBJECT_FACE_INSTRUCTION + textPrompt;
+  if (subjectImageUrls.length > 0) {
+    const instr = subjectInstruction || SUBJECT_FACE_INSTRUCTION;
+    textPrompt = instr + textPrompt;
+  }
   if (styleReferenceUrls.length > 0) textPrompt = (styleInstruction || STYLE_REFERENCE_INSTRUCTION) + textPrompt;
   if (logoUrl?.trim()) textPrompt = LOGO_INSTRUCTION + textPrompt;
   const hasSubject = subjectImageUrls.length > 0;
@@ -377,7 +430,8 @@ async function generateWithGoogleGemini(
   styleReferenceUrls: string[] = [],
   styleInstruction?: string,
   logoUrl?: string,
-  scenarioPhotoUrls: string[] = []
+  scenarioPhotoUrls: string[] = [],
+  subjectInstruction?: string
 ): Promise<{ url: string }[]> {
   const baseUrl = conn.api_url.replace(/\/$/, "");
   const model = conn.default_model || "gemini-2.5-flash-image";
@@ -385,7 +439,10 @@ async function generateWithGoogleGemini(
   const aspectRatio = getAspectRatio(dimensions);
   let textPrompt = prompt;
   if (scenarioPhotoUrls.length > 0) textPrompt = SCENARIO_INSTRUCTION + textPrompt;
-  if (subjectImageUrls.length > 0) textPrompt = SUBJECT_FACE_INSTRUCTION + textPrompt;
+  if (subjectImageUrls.length > 0) {
+    const instr = subjectInstruction || SUBJECT_FACE_INSTRUCTION;
+    textPrompt = instr + textPrompt;
+  }
   if (styleReferenceUrls.length > 0) textPrompt = (styleInstruction || STYLE_REFERENCE_INSTRUCTION) + textPrompt;
   if (logoUrl?.trim()) textPrompt = LOGO_INSTRUCTION + textPrompt;
   const urlsToFetch: string[] = [
@@ -496,7 +553,7 @@ serve(async (req) => {
     const scenarioPhotoUrls: string[] =
       useScenarioPhotos && Array.isArray(config.scenario_photo_urls)
         ? (config.scenario_photo_urls as string[]).filter((u): u is string => typeof u === "string" && u.length > 0).slice(0, 3)
-        : [];
+      : [];
     const styleReferenceUrls: string[] = Array.isArray(config.style_reference_urls)
       ? (config.style_reference_urls as string[]).filter((u): u is string => typeof u === "string" && u.length > 0).slice(0, 3)
       : [];
@@ -524,6 +581,9 @@ serve(async (req) => {
       else promptToUse = priority + prompt;
     }
     const logoUrl = (config.logo_url && typeof config.logo_url === "string" && config.logo_url.trim()) ? config.logo_url.trim() : undefined;
+    const subjectModeRaw = (config.subject_mode as string) || "person";
+    const subjectMode = subjectModeRaw === "product" ? "product" : "person";
+    const subjectInstruction = subjectMode === "product" ? SUBJECT_PRODUCT_INSTRUCTION : SUBJECT_FACE_INSTRUCTION;
 
     if (!promptToUse || !promptToUse.trim()) {
       return new Response(
@@ -555,11 +615,34 @@ serve(async (req) => {
           try {
             if (apiUrl.includes("openrouter")) {
               providerLabel = "openrouter";
-              images = await generateWithOpenRouter(conn as Conn, promptToUse, quantityForApi, (config.dimensions as string) || "1:1", subjectImageUrls, styleReferenceUrls, styleInstruction, logoUrl, scenarioPhotoUrls);
+              images = await generateWithOpenRouter(
+                conn as Conn,
+                promptToUse,
+                quantityForApi,
+                (config.dimensions as string) || "1:1",
+                subjectImageUrls,
+                styleReferenceUrls,
+                styleInstruction,
+                logoUrl,
+                scenarioPhotoUrls,
+                subjectInstruction
+              );
             } else if (apiUrl.includes("generativelanguage") || conn.provider?.toLowerCase() === "google") {
               providerLabel = "google";
               const imageSize = normalizeImageSize(config.image_size);
-              images = await generateWithGoogleGemini(conn as Conn, promptToUse, quantityForApi, (config.dimensions as string) || "1:1", imageSize, subjectImageUrls, styleReferenceUrls, styleInstruction, logoUrl, scenarioPhotoUrls);
+              images = await generateWithGoogleGemini(
+                conn as Conn,
+                promptToUse,
+                quantityForApi,
+                (config.dimensions as string) || "1:1",
+                imageSize,
+                subjectImageUrls,
+                styleReferenceUrls,
+                styleInstruction,
+                logoUrl,
+                scenarioPhotoUrls,
+                subjectInstruction
+              );
             }
           } catch (apiErr) {
             await supabase.from("neurodesign_generation_runs").update({ error_message: String(apiErr), completed_at: new Date().toISOString() }).eq("id", run.id);

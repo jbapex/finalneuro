@@ -1,43 +1,181 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/customSupabaseClient';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { useDebounce } from '@/hooks/use-debounce';
 
-/**
- * Modal para configurar conexão de LLM (texto) nas configurações de IA.
- * Implementação mínima para compilação; expandir conforme necessário.
- */
+const llmProviderOptions = ['OpenAI', 'OpenRouter', 'Google'];
+
+const getDefaultApiUrl = (provider) => {
+  if (provider === 'OpenAI') return 'https://api.openai.com/v1';
+  if (provider === 'OpenRouter') return 'https://openrouter.ai/api/v1';
+  if (provider === 'Google') return 'https://generativelanguage.googleapis.com';
+  return '';
+};
+
 const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinished }) => {
   const { user } = useAuth();
-  const [formData, setFormData] = useState({ name: '', provider: '', api_key: '', default_model: '' });
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [openRouterModels, setOpenRouterModels] = useState([]);
+  const [googleModels, setGoogleModels] = useState([]);
+  const [openaiModels, setOpenaiModels] = useState([]);
+  const [isLoadingOpenRouter, setIsLoadingOpenRouter] = useState(false);
+  const [isLoadingGoogle, setIsLoadingGoogle] = useState(false);
+  const [isLoadingOpenAI, setIsLoadingOpenAI] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    provider: 'OpenRouter',
+    api_key: '',
+    api_url: getDefaultApiUrl('OpenRouter'),
+    default_model: '',
+  });
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    if (editingConnection) {
-      setFormData({
-        name: editingConnection.name ?? '',
-        provider: editingConnection.provider ?? '',
-        api_key: editingConnection.api_key ?? '',
-        default_model: editingConnection.default_model ?? '',
+  const debouncedApiKey = useDebounce(formData.api_key, 500);
+
+  const fetchOpenRouterModels = useCallback(async (apiKey) => {
+    if (!apiKey) return;
+    setIsLoadingOpenRouter(true);
+    setOpenRouterModels([]);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-openrouter-models', { body: { apiKey } });
+      if (error) throw new Error(error.message);
+      const list = data?.models ?? data?.data ?? (Array.isArray(data) ? data : []);
+      const normalized = Array.isArray(list)
+        ? list.map((m) => ({ id: m?.id ?? m?.name ?? '', name: m?.name ?? m?.id ?? '' })).filter((m) => m.id)
+        : [];
+      setOpenRouterModels(normalized.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+    } catch (err) {
+      toast.error('Falha ao buscar modelos OpenRouter', { description: 'Verifique a chave da API e tente novamente.' });
+      setOpenRouterModels([]);
+    } finally {
+      setIsLoadingOpenRouter(false);
+    }
+  }, []);
+
+  const fetchGoogleModels = useCallback(async (apiKey) => {
+    if (!apiKey) return;
+    setIsLoadingGoogle(true);
+    setGoogleModels([]);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-google-models', { body: { apiKey } });
+      if (error) throw new Error(error?.message || error);
+      const list = data?.models ?? (Array.isArray(data) ? data : []);
+      const raw = Array.isArray(list) ? list : [];
+      const textModels = raw.filter((m) => {
+        const name = (m?.name ?? m?.baseModelId ?? '').toLowerCase();
+        return name.includes('gemini') && !name.includes('imagen');
       });
+      const normalized = textModels.map((m) => {
+        const id = m?.name ?? m?.baseModelId ?? '';
+        const label = m?.displayName || id || '';
+        return { id, name: label };
+      });
+      setGoogleModels(normalized.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+    } catch (err) {
+      toast.error('Falha ao buscar modelos Google', { description: 'Verifique a chave da API e tente novamente.' });
+      setGoogleModels([]);
+    } finally {
+      setIsLoadingGoogle(false);
+    }
+  }, []);
+
+  const fetchOpenAIModels = useCallback(async (apiKey) => {
+    if (!apiKey) return;
+    setIsLoadingOpenAI(true);
+    setOpenaiModels([]);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-openai-models', { body: { apiKey } });
+      if (error) throw new Error(error.message);
+      const list = data?.models ?? (Array.isArray(data) ? data : []);
+      const normalized = Array.isArray(list) ? list.filter((m) => m?.id) : [];
+      setOpenaiModels(normalized.sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || '')));
+    } catch (err) {
+      toast.error('Falha ao buscar modelos OpenAI', { description: 'Verifique a chave da API e tente novamente.' });
+      setOpenaiModels([]);
+    } finally {
+      setIsLoadingOpenAI(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (formData.provider === 'OpenRouter' && debouncedApiKey) {
+      fetchOpenRouterModels(debouncedApiKey);
     } else {
-      setFormData({ name: '', provider: '', api_key: '', default_model: '' });
+      setOpenRouterModels([]);
+    }
+  }, [formData.provider, debouncedApiKey, fetchOpenRouterModels]);
+
+  useEffect(() => {
+    if (formData.provider === 'Google' && debouncedApiKey) {
+      fetchGoogleModels(debouncedApiKey);
+    } else {
+      setGoogleModels([]);
+    }
+  }, [formData.provider, debouncedApiKey, fetchGoogleModels]);
+
+  useEffect(() => {
+    if (formData.provider === 'OpenAI' && debouncedApiKey) {
+      fetchOpenAIModels(debouncedApiKey);
+    } else {
+      setOpenaiModels([]);
+    }
+  }, [formData.provider, debouncedApiKey, fetchOpenAIModels]);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (editingConnection) {
+        const prov = editingConnection.provider || 'OpenRouter';
+        setFormData({
+          name: editingConnection.name ?? '',
+          provider: prov,
+          api_key: editingConnection.api_key ?? '',
+          api_url: editingConnection.api_url || getDefaultApiUrl(prov),
+          default_model: editingConnection.default_model ?? '',
+        });
+      } else {
+        setFormData({
+          name: '',
+          provider: 'OpenRouter',
+          api_key: '',
+          api_url: getDefaultApiUrl('OpenRouter'),
+          default_model: '',
+        });
+      }
+      setShowApiKey(false);
     }
   }, [editingConnection, isOpen]);
 
-  const handleSave = async () => {
+  const handleProviderChange = (value) => {
+    setFormData((prev) => ({
+      ...prev,
+      provider: value,
+      api_url: getDefaultApiUrl(value),
+      default_model: '',
+    }));
+  };
+
+  const handleSave = async (e) => {
+    e?.preventDefault?.();
     if (!user) return;
+    if (!formData.name?.trim() || !formData.api_key?.trim()) {
+      toast.error('Campos obrigatórios', { description: 'Preencha o nome e a chave da API.' });
+      return;
+    }
     setIsSaving(true);
     try {
       const payload = {
         user_id: user.id,
-        name: formData.name,
+        name: formData.name.trim(),
         provider: formData.provider,
         api_key: formData.api_key,
+        api_url: formData.api_url || null,
         default_model: formData.default_model || null,
         capabilities: { text_generation: true },
       };
@@ -59,52 +197,111 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
     }
   };
 
+  const currentModels =
+    formData.provider === 'OpenRouter'
+      ? openRouterModels
+      : formData.provider === 'Google'
+        ? googleModels
+        : openaiModels;
+  const isLoadingModels =
+    formData.provider === 'OpenRouter'
+      ? isLoadingOpenRouter
+      : formData.provider === 'Google'
+        ? isLoadingGoogle
+        : isLoadingOpenAI;
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent>
+      <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>{editingConnection ? 'Editar' : 'Nova'} conexão LLM</DialogTitle>
-          <DialogDescription>Configure uma conexão para geração de texto (LLM).</DialogDescription>
+          <DialogDescription>Configure uma conexão para geração de texto (Chat de IA). Selecione o provedor e informe a API Key; os modelos serão carregados automaticamente.</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-4 py-4">
+        <form onSubmit={handleSave} className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label>Nome</Label>
+            <Label htmlFor="llm-name">Nome</Label>
             <Input
+              id="llm-name"
               value={formData.name}
               onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-              placeholder="Ex: OpenAI"
+              placeholder="Ex: Minha OpenAI"
             />
           </div>
           <div className="grid gap-2">
-            <Label>Provider</Label>
-            <Input
-              value={formData.provider}
-              onChange={(e) => setFormData((p) => ({ ...p, provider: e.target.value }))}
-              placeholder="Ex: openai, openrouter"
-            />
+            <Label htmlFor="llm-provider">Provedor</Label>
+            <Select value={formData.provider || ''} onValueChange={handleProviderChange}>
+              <SelectTrigger id="llm-provider">
+                <SelectValue placeholder="Selecione um provedor" />
+              </SelectTrigger>
+              <SelectContent>
+                {llmProviderOptions.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {p}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid gap-2">
-            <Label>API Key</Label>
-            <Input
-              type="password"
-              value={formData.api_key}
-              onChange={(e) => setFormData((p) => ({ ...p, api_key: e.target.value }))}
-              placeholder="sk-..."
-            />
+            <Label htmlFor="llm-api_key">Chave da API (API Key)</Label>
+            <div className="relative">
+              <Input
+                id="llm-api_key"
+                type={showApiKey ? 'text' : 'password'}
+                value={formData.api_key}
+                onChange={(e) => setFormData((p) => ({ ...p, api_key: e.target.value }))}
+                placeholder="sk-..."
+                className="pr-10"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-0 top-0 h-full px-3"
+                onClick={() => setShowApiKey(!showApiKey)}
+              >
+                {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">A lista de modelos será carregada após inserir uma chave válida.</p>
           </div>
           <div className="grid gap-2">
-            <Label>Modelo padrão</Label>
-            <Input
-              value={formData.default_model}
-              onChange={(e) => setFormData((p) => ({ ...p, default_model: e.target.value }))}
-              placeholder="Ex: gpt-4"
-            />
+            <Label htmlFor="llm-model">Modelo padrão</Label>
+            <Select
+              value={formData.default_model || ''}
+              onValueChange={(value) => setFormData((p) => ({ ...p, default_model: value }))}
+              disabled={isLoadingModels}
+            >
+              <SelectTrigger id="llm-model">
+                {isLoadingModels ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Carregando modelos...
+                  </span>
+                ) : currentModels.length === 0 ? (
+                  <SelectValue placeholder="Informe a chave da API para carregar os modelos" />
+                ) : (
+                  <SelectValue placeholder="Selecione um modelo" />
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                {currentModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.name || m.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setIsOpen(false)}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={isSaving}>Salvar</Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

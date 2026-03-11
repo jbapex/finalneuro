@@ -8,6 +8,7 @@ export function neuroDesignDefaultConfig() {
   return {
     user_ai_connection_id: null,
     subject_enabled: true,
+    subject_mode: 'person', // 'person' | 'product'
     subject_gender: 'feminino',
     subject_description: '',
     subject_image_urls: [],

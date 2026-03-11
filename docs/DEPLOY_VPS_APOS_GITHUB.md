@@ -6,6 +6,25 @@ Siga estes passos **na sua VPS**.
 
 ---
 
+## Deploy completo a partir de neuroapice (recomendado)
+
+Se o código que você quer colocar online está em **`/root/neuroapice`** (sem usar outro repositório), use o script que faz build do front e sincroniza **todas** as Edge Functions para o volume do Docker:
+
+```bash
+cd /root/neuroapice
+chmod +x deploy-from-neuroapice.sh
+./deploy-from-neuroapice.sh
+```
+
+O script:
+1. Executa `npm run build` em `/root/neuroapice`
+2. Copia todas as pastas de `neuroapice/supabase/functions/` para `/root/supabase/docker/volumes/functions/` (lista: `download-video`, `generate-content`, `generic-ai-chat`, `get-google-models`, `get-openai-models`, `get-openrouter-models`, `get-video-metadata`, `neurodesign-generate`, `neurodesign-generate-google`, `neurodesign-refine`, `neurodesign-refine-google`, `page-analyzer`, `site-builder-assistant`)
+3. Executa `docker service update --force supabase_supabase_functions`
+
+Assim o front e as Edge Functions passam a ser servidos com o código atual de `neuroapice`. O container que serve o front deve estar configurado para usar o `dist` gerado em `neuroapice/dist` (ou o mesmo diretório que o script de deploy do nginx/servidor usa).
+
+---
+
 ## 1. Entrar na VPS e ir na pasta do projeto
 
 Conecte por SSH e acesse a pasta onde está o repositório (o mesmo que usa no Supabase / app):
@@ -116,15 +135,18 @@ cd /root/neuroapice
 git pull origin main
 ```
 
-### 2. Copiar as funções do NeuroDesign para o volume das functions
+### 2. Copiar as funções para o volume das functions
+
+Lista completa de funções (copiar todas para o volume):
 
 ```bash
-cp -r /root/neuroapice/supabase/functions/neurodesign-generate \
-      /root/neuroapice/supabase/functions/neurodesign-generate-google \
-      /root/neuroapice/supabase/functions/neurodesign-refine \
-      /root/neuroapice/supabase/functions/neurodesign-refine-google \
-      /root/supabase/docker/volumes/functions/
+cd /root/neuroapice/supabase/functions
+for dir in download-video generate-content generic-ai-chat get-google-models get-openai-models get-openrouter-models get-video-metadata neurodesign-generate neurodesign-generate-google neurodesign-refine neurodesign-refine-google page-analyzer site-builder-assistant; do
+  [ -d "$dir" ] && cp -r "$dir" /root/supabase/docker/volumes/functions/
+done
 ```
+
+Ou use o script: `./deploy-from-neuroapice.sh` (faz também o build do front).
 
 ### 3. Forçar atualização do serviço das functions
 

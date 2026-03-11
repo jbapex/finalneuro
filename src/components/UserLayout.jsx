@@ -11,6 +11,8 @@ import { useMediaQuery } from '@/hooks/use-media-query';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
+import { useTheme } from '@/contexts/ThemeContext';
+import { useSystemLogo } from '@/lib/systemBranding';
 const mainNavItems = [{
   to: '/campanhas',
   icon: Target,
@@ -31,11 +33,6 @@ const mainNavItems = [{
   icon: Bot,
   label: 'Chat IA',
   permissionKey: 'ai_chat'
-}, {
-  to: '/performance',
-  icon: BarChart,
-  label: 'Performance',
-  permissionKey: null
 }, {
   to: '/fluxo-criativo',
   icon: GitFork,
@@ -90,19 +87,22 @@ const UserLayout = () => {
     hasPermission
   } = useAuth();
   const navigate = useNavigate();
+  const { theme } = useTheme();
+  const { lightLogoUrl, darkLogoUrl, iconLogoUrl, iconLightLogoUrl, iconDarkLogoUrl } = useSystemLogo();
   const isDesktop = useMediaQuery('(min-width: 768px)');
   const location = useLocation();
   const isToolsSection = location.pathname.startsWith('/ferramentas');
-  const isNeuroDesignPage = location.pathname === '/ferramentas/neurodesign';
+  const isNeuroDesignPage = location.pathname === '/ferramentas/neurodesign' || location.pathname === '/ferramentas/artes-culto';
+  const isChatIaPage = location.pathname === '/chat-ia';
 
-  // No NeuroDesign, recolher o menu principal para caber tudo em uma tela (só fica o menu do NeuroDesign)
+  // Em NeuroDesign, Artes de Culto e Chat IA, recolher o menu principal para dar mais espaço ao conteúdo
   useEffect(() => {
-    if (isNeuroDesignPage && isDesktop) {
+    if ((isNeuroDesignPage || isChatIaPage) && isDesktop) {
       setIsSidebarCollapsed(true);
-    } else if (!isNeuroDesignPage) {
+    } else if (!isNeuroDesignPage && !isChatIaPage) {
       setIsSidebarCollapsed(false);
     }
-  }, [isNeuroDesignPage, isDesktop]);
+  }, [isNeuroDesignPage, isChatIaPage, isDesktop]);
   const pageTitleData = {
     '/campanhas': 'Campanhas',
     '/clientes': 'Clientes',
@@ -138,10 +138,49 @@ const UserLayout = () => {
     }
   };
   const SidebarContent = () => <div className="flex h-full max-h-screen flex-col gap-2">
-      <div className="flex h-14 items-center border-b px-4 lg:h-[60px] lg:px-6">
-        <NavLink to="/campanhas" className="flex items-center gap-2 font-semibold">
-          <Bot className="h-6 w-6 text-primary" />
-          {!isSidebarCollapsed && <span>Neuro Ápice</span>}
+      <div className="flex h-14 items-center border-b px-2 lg:h-[60px] lg:px-4">
+        <NavLink to="/campanhas" className="flex items-center justify-center w-full font-semibold">
+          {(() => {
+            const prefersDark = theme === 'dark' || theme === 'system';
+            const logoToShow = prefersDark ? darkLogoUrl || lightLogoUrl : lightLogoUrl || darkLogoUrl;
+            
+            // Lógica para o ícone da sidebar recolhida (prioriza iconLight/Dark, depois iconLogoUrl, depois a logo principal)
+            let iconToShow = logoToShow;
+            if (prefersDark && iconDarkLogoUrl) {
+              iconToShow = iconDarkLogoUrl;
+            } else if (!prefersDark && iconLightLogoUrl) {
+              iconToShow = iconLightLogoUrl;
+            } else if (iconLogoUrl) {
+              iconToShow = iconLogoUrl;
+            }
+
+            if (logoToShow) {
+              if (isSidebarCollapsed) {
+                return (
+                  <div className="h-8 w-8 rounded-full bg-muted overflow-hidden flex items-center justify-center">
+                    <img
+                      src={iconToShow}
+                      alt="Neuro Ápice"
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                );
+              }
+              return (
+                <img
+                  src={logoToShow}
+                  alt="Neuro Ápice"
+                  className="h-12 max-h-full w-full object-contain"
+                />
+              );
+            }
+            return (
+              <>
+                <Bot className="h-6 w-6 text-primary" />
+                {!isSidebarCollapsed && <span>Neuro Ápice</span>}
+              </>
+            );
+          })()}
         </NavLink>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -207,15 +246,17 @@ const UserLayout = () => {
         </AnimatePresence>}
 
       <div className="flex flex-col">
-        <header className="flex h-14 items-center gap-2 sm:gap-4 border-b bg-card px-3 sm:px-4 lg:h-[60px] lg:px-6 sticky top-0 z-30 shrink-0">
-          <Button variant="ghost" size="icon" className="md:hidden touch-target shrink-0" onClick={toggleSidebar} aria-label="Abrir menu">
-            <Menu className="h-5 w-5" />
-          </Button>
-          <div className="w-full flex-1 min-w-0">
-            <h1 className="text-lg sm:text-xl font-semibold truncate md:block" title={pageTitle}>{pageTitle}</h1>
-          </div>
-          <ThemeToggle />
-        </header>
+        {!isChatIaPage && (
+          <header className="flex h-14 items-center gap-2 sm:gap-4 border-b bg-card px-3 sm:px-4 lg:h-[60px] lg:px-6 sticky top-0 z-30 shrink-0">
+            <Button variant="ghost" size="icon" className="md:hidden touch-target shrink-0" onClick={toggleSidebar} aria-label="Abrir menu">
+              <Menu className="h-5 w-5" />
+            </Button>
+            <div className="w-full flex-1 min-w-0">
+              {/* Título da página removido conforme solicitado */}
+            </div>
+            <ThemeToggle />
+          </header>
+        )}
         <main className="flex flex-1 flex-col gap-4 bg-muted/40 overflow-x-hidden pb-20 md:pb-0 min-h-0">
           <Outlet />
         </main>

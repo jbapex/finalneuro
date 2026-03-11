@@ -15,9 +15,18 @@ import { v4 as uuidv4 } from 'uuid';
 /**
  * Modal do banco de imagens do Site Builder.
  * Lista imagens do projeto (tabela site_project_images) e permite upload.
- * Ao selecionar, chama onImageSelect({ signedUrl, alt_text }).
+ * - Modo substituir: ao selecionar, chama onImageSelect({ signedUrl, alt_text }).
+ * - Modo inserir: insertMode=true, sectionId e onImageSelectInsert(image, sectionId); ao selecionar chama onImageSelectInsert.
  */
-const ImageBankModal = ({ isOpen, onClose, projectId, onImageSelect }) => {
+const ImageBankModal = ({
+  isOpen,
+  onClose,
+  projectId,
+  onImageSelect,
+  insertMode = false,
+  sectionId = null,
+  onImageSelectInsert,
+}) => {
   const [images, setImages] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -85,10 +94,13 @@ const ImageBankModal = ({ isOpen, onClose, projectId, onImageSelect }) => {
   };
 
   const handleSelect = (row) => {
-    onImageSelect({
-      signedUrl: row.image_url,
-      alt_text: row.alt_text || '',
-    });
+    const image = { signedUrl: row.image_url, alt_text: row.alt_text || '' };
+    if (insertMode && onImageSelectInsert && sectionId) {
+      onImageSelectInsert(image, sectionId);
+      onClose();
+      return;
+    }
+    onImageSelect?.(image);
     onClose();
   };
 
@@ -96,10 +108,12 @@ const ImageBankModal = ({ isOpen, onClose, projectId, onImageSelect }) => {
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Banco de imagens</DialogTitle>
+          <DialogTitle>{insertMode ? 'Inserir imagem na seção' : 'Banco de imagens'}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Clique em uma imagem para usá-la no site. Você pode enviar novas imagens abaixo.
+          {insertMode
+            ? 'Escolha uma imagem para inserir na seção selecionada. Você pode enviar novas imagens abaixo.'
+            : 'Clique em uma imagem para usá-la no site. Você pode enviar novas imagens abaixo.'}
         </p>
         <div className="flex items-center gap-2 border rounded-md p-2 bg-muted/40">
           <Button

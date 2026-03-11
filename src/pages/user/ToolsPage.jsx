@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
-import { ArrowRight, Bot, FileText, BarChart2, Clapperboard, Share2, PenSquare, MessagesSquare, Lightbulb, Search, CalendarDays, Globe, Lock, Palette } from 'lucide-react';
+import { ArrowRight, Bot, FileText, BarChart2, Clapperboard, Share2, PenSquare, MessagesSquare, Lightbulb, Search, CalendarDays, Globe, Lock, Palette, Church } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const allTools = [
@@ -41,14 +41,14 @@ const allTools = [
         description: 'Design Builder premium: crie imagens com sujeito, cenário, texto e controle total de composição.', 
         icon: <Palette className="h-8 w-8 text-primary" />,
         path: '/ferramentas/neurodesign',
-        permissionKey: null, // liberado para todos os planos por enquanto
+        permissionKey: null,
     },
     {
-        title: 'Ferramenta de Transcrição',
-        description: 'Transcreva vídeos do YouTube e Instagram com a tecnologia Whisper da OpenAI.',
-        icon: <FileText className="h-8 w-8 text-primary" />,
-        path: '/ferramentas/transcritor-de-video',
-        permissionKey: 'transcriber',
+        title: 'Artes de Culto',
+        description: 'Crie artes para igrejas: tema principal, pregador, cantores e rodapé fixo.',
+        icon: <Church className="h-8 w-8 text-primary" />,
+        path: '/ferramentas/artes-culto',
+        permissionKey: null,
     },
     { 
         title: 'Analisador de Campanha', 
@@ -70,20 +70,6 @@ const allTools = [
         icon: <MessagesSquare className="h-8 w-8 text-primary" />,
         path: '/chat-ia',
         permissionKey: 'ai_chat',
-    },
-    {
-        title: 'Assuntos em Alta',
-        description: 'Descubra os tópicos mais quentes do momento para criar conteúdo relevante.',
-        icon: <Lightbulb className="h-8 w-8 text-primary" />,
-        path: '/ferramentas/assuntos-em-alta',
-        permissionKey: 'trending_topics',
-    },
-    {
-        title: 'Planejador de Palavras-chave',
-        description: 'Encontre as melhores palavras-chave para SEO e conteúdo.',
-        icon: <Search className="h-8 w-8 text-primary" />,
-        path: '/ferramentas/planejador-de-palavras-chave',
-        permissionKey: 'keyword_planner',
     },
     {
         title: 'Calendário de Publicação',

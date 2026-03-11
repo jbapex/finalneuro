@@ -16,7 +16,11 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
   const { user } = useAuth();
   const [showApiKey, setShowApiKey] = useState(false);
   const [openRouterModels, setOpenRouterModels] = useState([]);
+  const [googleModels, setGoogleModels] = useState([]);
+  const [openaiModels, setOpenaiModels] = useState([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [isLoadingGoogleModels, setIsLoadingGoogleModels] = useState(false);
+  const [isLoadingOpenAIModels, setIsLoadingOpenAIModels] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     provider: 'OpenAI',
@@ -33,11 +37,15 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
       provider: 'OpenAI',
       api_key: '',
       api_url: 'https://api.openai.com/v1',
-      default_model: 'gpt-4o',
+      default_model: '',
     });
     setShowApiKey(false);
     setOpenRouterModels([]);
+    setGoogleModels([]);
+    setOpenaiModels([]);
     setIsLoadingModels(false);
+    setIsLoadingGoogleModels(false);
+    setIsLoadingOpenAIModels(false);
   };
 
   const fetchOpenRouterModels = useCallback(async (apiKey) => {
@@ -52,13 +60,61 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
         throw new Error(error.message);
       }
       
-      const sortedModels = data.models.sort((a, b) => a.name.localeCompare(b.name));
-      setOpenRouterModels(sortedModels);
+      const list = data?.models ?? data?.data ?? (Array.isArray(data) ? data : []);
+      const normalized = Array.isArray(list)
+        ? list.map((m) => ({ id: m?.id ?? m?.name ?? '', name: m?.name ?? m?.id ?? '' })).filter((m) => m.id)
+        : [];
+      setOpenRouterModels(normalized.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
     } catch (error) {
       toast.error('Falha ao buscar modelos da OpenRouter', { description: 'Verifique se sua chave de API está correta e tente novamente.' });
       setOpenRouterModels([]);
     } finally {
       setIsLoadingModels(false);
+    }
+  }, []);
+
+  const fetchGoogleModels = useCallback(async (apiKey) => {
+    if (!apiKey) return;
+    setIsLoadingGoogleModels(true);
+    setGoogleModels([]);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-google-models', { body: { apiKey } });
+      if (error) throw new Error(error?.message || error);
+      const list = data?.models ?? (Array.isArray(data) ? data : []);
+      const raw = Array.isArray(list) ? list : [];
+      const textModels = raw.filter((m) => {
+        const name = (m?.name ?? m?.baseModelId ?? '').toLowerCase();
+        return name.includes('gemini') && !name.includes('imagen');
+      });
+      const normalized = textModels.map((m) => {
+        const id = m?.name ?? m?.baseModelId ?? '';
+        const label = m?.displayName || id || '';
+        return { id, name: label };
+      });
+      setGoogleModels(normalized.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+    } catch (err) {
+      toast.error('Falha ao buscar modelos Google', { description: 'Verifique a chave da API e tente novamente.' });
+      setGoogleModels([]);
+    } finally {
+      setIsLoadingGoogleModels(false);
+    }
+  }, []);
+
+  const fetchOpenAIModels = useCallback(async (apiKey) => {
+    if (!apiKey) return;
+    setIsLoadingOpenAIModels(true);
+    setOpenaiModels([]);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-openai-models', { body: { apiKey } });
+      if (error) throw new Error(error.message);
+      const list = data?.models ?? (Array.isArray(data) ? data : []);
+      const normalized = Array.isArray(list) ? list.filter((m) => m?.id) : [];
+      setOpenaiModels(normalized.sort((a, b) => (a.name || a.id || '').localeCompare(b.name || b.id || '')));
+    } catch (err) {
+      toast.error('Falha ao buscar modelos OpenAI', { description: 'Verifique a chave da API e tente novamente.' });
+      setOpenaiModels([]);
+    } finally {
+      setIsLoadingOpenAIModels(false);
     }
   }, []);
 
@@ -69,6 +125,22 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
       setOpenRouterModels([]);
     }
   }, [formData.provider, debouncedApiKey, fetchOpenRouterModels]);
+
+  useEffect(() => {
+    if (formData.provider === 'Google' && debouncedApiKey) {
+      fetchGoogleModels(debouncedApiKey);
+    } else {
+      setGoogleModels([]);
+    }
+  }, [formData.provider, debouncedApiKey, fetchGoogleModels]);
+
+  useEffect(() => {
+    if (formData.provider === 'OpenAI' && debouncedApiKey) {
+      fetchOpenAIModels(debouncedApiKey);
+    } else {
+      setOpenaiModels([]);
+    }
+  }, [formData.provider, debouncedApiKey, fetchOpenAIModels]);
 
 
   useEffect(() => {
@@ -93,10 +165,8 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
       newFormData.api_url = 'https://openrouter.ai/api/v1';
     } else if (value === 'OpenAI') {
       newFormData.api_url = 'https://api.openai.com/v1';
-      newFormData.default_model = 'gpt-4o';
     } else if (value === 'Google') {
       newFormData.api_url = 'https://generativelanguage.googleapis.com';
-      newFormData.default_model = 'gemini-1.5-pro-latest';
     } else {
       newFormData.api_url = '';
     }
@@ -147,7 +217,7 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
             disabled={isLoadingModels || openRouterModels.length === 0}
           >
             <SelectTrigger id="sb-conn-default_model" className="w-full glass-effect border-white/20">
-              <SelectValue placeholder={isLoadingModels ? "Carregando modelos..." : "Selecione um modelo"} />
+              <SelectValue placeholder={isLoadingModels ? "Carregando modelos..." : openRouterModels.length === 0 ? "Informe a chave da API para carregar os modelos" : "Selecione um modelo"} />
             </SelectTrigger>
             <SelectContent className="bg-gray-800 text-white border-white/20 max-h-60">
               {openRouterModels.map(model => (
@@ -160,16 +230,51 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
       );
     }
 
-    return (
-        <Input 
-          id="sb-conn-default_model" 
-          value={formData.default_model} 
-          onChange={(e) => setFormData({ ...formData, default_model: e.target.value })} 
-          placeholder="Ex: gpt-4o" 
-          className="glass-effect border-white/20" 
-          required
-        />
-    );
+    if (formData.provider === 'Google') {
+      return (
+        <div className="relative">
+          <Select
+            onValueChange={(value) => setFormData({ ...formData, default_model: value })}
+            value={formData.default_model}
+            disabled={isLoadingGoogleModels || googleModels.length === 0}
+          >
+            <SelectTrigger id="sb-conn-default_model" className="w-full glass-effect border-white/20">
+              <SelectValue placeholder={isLoadingGoogleModels ? "Carregando modelos..." : googleModels.length === 0 ? "Informe a chave da API para carregar os modelos" : "Selecione um modelo"} />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-800 text-white border-white/20 max-h-60">
+              {googleModels.map(model => (
+                <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isLoadingGoogleModels && <Loader2 className="absolute right-10 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
+        </div>
+      );
+    }
+
+    if (formData.provider === 'OpenAI') {
+      return (
+        <div className="relative">
+          <Select
+            onValueChange={(value) => setFormData({ ...formData, default_model: value })}
+            value={formData.default_model}
+            disabled={isLoadingOpenAIModels || openaiModels.length === 0}
+          >
+            <SelectTrigger id="sb-conn-default_model" className="w-full glass-effect border-white/20">
+              <SelectValue placeholder={isLoadingOpenAIModels ? "Carregando modelos..." : openaiModels.length === 0 ? "Informe a chave da API para carregar os modelos" : "Selecione um modelo"} />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-800 text-white border-white/20 max-h-60">
+              {openaiModels.map(model => (
+                <SelectItem key={model.id} value={model.id}>{model.name || model.id}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {isLoadingOpenAIModels && <Loader2 className="absolute right-10 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
+        </div>
+      );
+    }
+
+    return null;
   };
 
   return (
@@ -203,7 +308,7 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
                 {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </Button>
             </div>
-            {formData.provider === 'OpenRouter' && <p className="text-xs text-muted-foreground mt-1">A lista de modelos será carregada após inserir uma chave válida.</p>}
+            <p className="text-xs text-muted-foreground mt-1">A lista de modelos será carregada após inserir uma chave válida.</p>
           </div>
            <div>
             <Label htmlFor="sb-conn-default_model">Modelo Padrão</Label>

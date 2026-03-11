@@ -34,6 +34,10 @@ const NeuroDesignPage = () => {
   const [llmConnections, setLlmConnections] = useState([]);
   const [selectedLlmId, setSelectedLlmId] = useState(null);
   const [isFillingFromPrompt, setIsFillingFromPrompt] = useState(false);
+  const [userGalleryPage, setUserGalleryPage] = useState(0);
+  const [userGalleryHasMore, setUserGalleryHasMore] = useState(true);
+  const [isLoadingUserGallery, setIsLoadingUserGallery] = useState(false);
+  const [isGalleryPreviewOpen, setIsGalleryPreviewOpen] = useState(false);
   const isLg = useMediaQuery('(min-width: 1024px)');
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
   const [builderDrawerOpen, setBuilderDrawerOpen] = useState(false);
@@ -138,6 +142,62 @@ const NeuroDesignPage = () => {
     setImages(data || []);
   }, [toast]);
 
+  const USER_GALLERY_PAGE_SIZE = 60;
+
+  const loadUserGalleryImages = useCallback(async (page = 0, { reset = false } = {}) => {
+    if (!user) return;
+    const projectIds = projects.map((p) => p.id).filter(Boolean);
+    if (projectIds.length === 0) {
+      if (reset) {
+        setImages([]);
+        setUserGalleryPage(0);
+        setUserGalleryHasMore(false);
+      }
+      return;
+    }
+    setIsLoadingUserGallery(true);
+    try {
+      const from = page * USER_GALLERY_PAGE_SIZE;
+      const to = from + USER_GALLERY_PAGE_SIZE - 1;
+      const { data, error } = await supabase
+        .from('neurodesign_generated_images')
+        .select('*')
+        .in('project_id', projectIds)
+        .order('created_at', { ascending: false })
+        .range(from, to);
+      if (error) {
+        toast({
+          title: 'Erro ao carregar Minha Galeria',
+          description: error.message,
+          variant: 'destructive',
+        });
+        if (reset) {
+          setImages([]);
+          setUserGalleryPage(0);
+          setUserGalleryHasMore(false);
+        }
+        return;
+      }
+      const batch = data || [];
+      if (reset) {
+        setImages(batch);
+      } else {
+        setImages((prev) => {
+          const existingIds = new Set(prev.map((img) => img.id));
+          const merged = [...prev];
+          batch.forEach((img) => {
+            if (!existingIds.has(img.id)) merged.push(img);
+          });
+          return merged;
+        });
+      }
+      setUserGalleryPage(page + 1);
+      setUserGalleryHasMore(batch.length === USER_GALLERY_PAGE_SIZE);
+    } finally {
+      setIsLoadingUserGallery(false);
+    }
+  }, [user, projects, toast]);
+
   useEffect(() => {
     ensureOneGallery();
     fetchImageConnections();
@@ -158,10 +218,24 @@ const NeuroDesignPage = () => {
     }
   }, [selectedProject, fetchRuns, fetchImages]);
 
+  useEffect(() => {
+    if (view === 'gallery') {
+      setUserGalleryPage(0);
+      setUserGalleryHasMore(true);
+      loadUserGalleryImages(0, { reset: true });
+    } else if (view === 'create' && selectedProject?.id) {
+      fetchImages(selectedProject.id);
+    }
+  }, [view, loadUserGalleryImages, fetchImages, selectedProject?.id]);
+
   const handleGenerate = async (config) => {
     if (generatingRef.current) return;
     if (!selectedProject) {
-      toast({ title: 'Selecione uma galeria', variant: 'destructive' });
+      toast({
+        title: 'Não foi possível carregar seu projeto interno.',
+        description: 'Recarregue a página e tente novamente.',
+        variant: 'destructive',
+      });
       return;
     }
     if (config?.text_enabled) {
@@ -217,6 +291,31 @@ const NeuroDesignPage = () => {
     } finally {
       generatingRef.current = false;
       setIsGenerating(false);
+    }
+  };
+
+  const handleDeleteImage = async (image) => {
+    if (!image?.id) return;
+    const confirmDelete = window.confirm('Excluir esta arte da sua galeria? Esta ação não pode ser desfeita.');
+    if (!confirmDelete) return;
+    try {
+      const { error } = await supabase
+        .from('neurodesign_generated_images')
+        .delete()
+        .eq('id', image.id);
+      if (error) throw error;
+      setImages((prev) => prev.filter((img) => img.id !== image.id));
+      if (selectedImage?.id === image.id) {
+        setSelectedImage(null);
+        setIsGalleryPreviewOpen(false);
+      }
+      toast({ title: 'Arte excluída com sucesso.' });
+    } catch (e) {
+      toast({
+        title: 'Erro ao excluir arte',
+        description: e?.message || 'Não foi possível excluir esta arte. Tente novamente.',
+        variant: 'destructive',
+      });
     }
   };
 
@@ -667,13 +766,33 @@ Responda somente com o JSON.`;
           )}
           {view === 'gallery' && (
             <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
+              <p className="text-sm text-muted-foreground mb-4">
+                Todas as artes que você já gerou no NeuroDesign.
+              </p>
               <MasonryGallery
                 images={images}
                 projectId={selectedProject?.id}
+                userGalleryMode={true}
                 selectedIds={selectedImage ? [selectedImage.id] : []}
-                onSelectImage={setSelectedImage}
+                onSelectImage={(img) => {
+                  setSelectedImage(img);
+                  setIsGalleryPreviewOpen(true);
+                }}
                 onDownload={downloadHandler}
+                onDeleteImage={handleDeleteImage}
               />
+              {userGalleryHasMore && (
+                <div className="mt-6 flex justify-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => loadUserGalleryImages(userGalleryPage, { reset: false })}
+                    disabled={isLoadingUserGallery}
+                  >
+                    {isLoadingUserGallery ? 'Carregando...' : 'Carregar mais'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </main>
@@ -725,6 +844,36 @@ Responda somente com o JSON.`;
               isFillingFromPrompt={isFillingFromPrompt}
             />
           </div>
+        </DialogContent>
+      </Dialog>
+      {/* Preview de imagem da Minha Galeria */}
+      <Dialog open={isGalleryPreviewOpen && !!selectedImage} onOpenChange={setIsGalleryPreviewOpen}>
+        <DialogContent className="max-w-3xl w-full">
+          {selectedImage && (
+            <div className="space-y-4">
+              <div className="w-full rounded-lg overflow-hidden bg-black/80">
+                <img
+                  src={selectedImage.url || selectedImage.thumbnail_url}
+                  alt=""
+                  className="w-full h-auto max-h-[70vh] object-contain"
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => downloadHandler(selectedImage.url || selectedImage.thumbnail_url)}
+                >
+                  Baixar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => handleDeleteImage(selectedImage)}
+                >
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
       </NeuroDesignErrorBoundary>

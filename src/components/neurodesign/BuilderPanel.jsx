@@ -12,6 +12,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
 import { ZoneGrid } from '@/components/neurodesign/ZoneGrid';
 import { Sparkles, Copy, Upload, X } from 'lucide-react';
+import { supabase } from '@/lib/customSupabaseClient';
 
 const DIMENSIONS = [
   { value: '1:1', label: '1:1 Feed' },
@@ -75,6 +76,7 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
   const [fillPromptInput, setFillPromptInput] = useState('');
   const [isUploadingStyleRefs, setIsUploadingStyleRefs] = useState(false);
   const styleRefsInputRef = useRef(null);
+  const [logosByProvider, setLogosByProvider] = useState({});
 
   React.useEffect(() => {
     const next = config || defaultConfig();
@@ -86,6 +88,28 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
     }
     setLocalConfig(next);
   }, [config]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    const loadLogos = async () => {
+      try {
+        const { data, error } = await supabase.from('llm_logos').select('provider, logo_url');
+        if (!error && data && !cancelled) {
+          const map = {};
+          data.forEach((row) => {
+            if (row?.provider && row?.logo_url) map[row.provider] = row.logo_url;
+          });
+          setLogosByProvider(map);
+        }
+      } catch {
+        // falha silenciosa: apenas não exibe logos
+      }
+    };
+    loadLogos();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const update = (key, value) => {
     const next = { ...localConfig, [key]: value };
@@ -215,13 +239,27 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
           value={localConfig.user_ai_connection_id || 'none'}
           onValueChange={(v) => update('user_ai_connection_id', v === 'none' ? null : v)}
         >
-          <SelectTrigger className="mt-1 bg-muted border-border text-foreground placeholder:text-muted-foreground">
+          <SelectTrigger className="mt-1 h-10 rounded-full bg-gradient-to-r from-primary/45 to-primary/30 border border-primary/60 hover:from-primary/55 hover:to-primary/40 hover:border-primary/70 text-foreground font-medium shadow-md shadow-primary/15 hover:shadow-lg hover:shadow-primary/25 transition-all duration-200 placeholder:text-muted-foreground">
             <SelectValue placeholder="Selecione uma conexão" />
           </SelectTrigger>
           <SelectContent className="bg-popover text-popover-foreground border-border">
             <SelectItem value="none">Usar mock (sem conexão)</SelectItem>
             {imageConnections.map((c) => (
-              <SelectItem key={c.id} value={c.id}>{c.name} ({c.provider})</SelectItem>
+              <SelectItem key={c.id} value={c.id}>
+                <div className="flex items-center gap-2">
+                  {logosByProvider[c.provider] && (
+                    <img
+                      src={logosByProvider[c.provider]}
+                      alt=""
+                      className="h-4 w-4 rounded-sm object-contain"
+                    />
+                  )}
+                  <span>{c.name}</span>
+                  {c.provider && (
+                    <span className="text-xs text-muted-foreground">({c.provider})</span>
+                  )}
+                </div>
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -239,7 +277,7 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
 
       <div>
         <div className="flex items-center justify-between">
-          <Label>Sujeito principal</Label>
+        <Label>Sujeito principal</Label>
           <Switch checked={localConfig.subject_enabled !== false && localConfig.subject_enabled !== 'false'} onCheckedChange={(v) => update('subject_enabled', v)} />
         </div>
         {localConfig.subject_enabled !== false && localConfig.subject_enabled !== 'false' ? (
@@ -263,13 +301,37 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
                 <input type="file" accept="image/*" className="hidden" multiple onChange={(e) => handleUpload('subject', e.target.files)} />
               </label>
             </div>
-            <Select value={localConfig.subject_gender || 'feminino'} onValueChange={(v) => update('subject_gender', v)}>
+            <Select
+              value={
+                (localConfig.subject_mode || 'person') === 'product'
+                  ? 'produto'
+                  : (localConfig.subject_gender || 'feminino') === 'masculino'
+                    ? 'masculino'
+                    : 'feminino'
+              }
+              onValueChange={(v) => {
+                if (v === 'produto') {
+                  setLocalConfig((prev) => {
+                    const next = { ...prev, subject_mode: 'product', subject_gender: '' };
+                    setConfig?.(next);
+                    return next;
+                  });
+                } else {
+                  setLocalConfig((prev) => {
+                    const next = { ...prev, subject_mode: 'person', subject_gender: v };
+                    setConfig?.(next);
+                    return next;
+                  });
+                }
+              }}
+            >
               <SelectTrigger className="mt-2 bg-muted border-border text-foreground placeholder:text-muted-foreground">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-popover text-popover-foreground">
                 <SelectItem value="feminino">Feminino</SelectItem>
                 <SelectItem value="masculino">Masculino</SelectItem>
+                <SelectItem value="produto">Produto / objeto</SelectItem>
               </SelectContent>
             </Select>
             <Textarea placeholder="Descrição pose/roupa" value={localConfig.subject_description || ''} onChange={(e) => update('subject_description', e.target.value)} className="mt-2 bg-muted border-border text-foreground placeholder:text-muted-foreground min-h-[60px]" />
@@ -511,12 +573,12 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
                   <div className="mt-2 space-y-2">
                     <Select value={localConfig.cta_shape_style || 'rounded_rectangle'} onValueChange={(v) => update('cta_shape_style', v)}>
                       <SelectTrigger className="h-8 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-popover text-popover-foreground">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-popover text-popover-foreground">
                         {TEXT_SHAPE_STYLES.map((s) => <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
+              </SelectContent>
+            </Select>
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                       <input type="color" value={hexToColorInput(localConfig.cta_shape_color || '#dc2626')} onChange={(e) => update('cta_shape_color', e.target.value)} className="h-8 w-10 shrink-0 cursor-pointer rounded border border-border bg-muted" title="Cor da shape" />
                       <Input type="text" placeholder="#hex" value={localConfig.cta_shape_color || ''} onChange={(e) => update('cta_shape_color', normalizeHexInput(e.target.value) || e.target.value)} className="bg-muted border-border text-foreground h-8 flex-1 min-w-0 text-base sm:text-sm" />
@@ -759,9 +821,9 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
           const hasTextFilled = !localConfig.text_enabled || (isFreeMode
             ? Boolean((localConfig.custom_text || '').trim() || localConfig.use_reference_image_text)
             : Boolean(
-                (localConfig.headline_h1 || '').trim() ||
-                (localConfig.subheadline_h2 || '').trim() ||
-                (localConfig.cta_button_text || '').trim()
+            (localConfig.headline_h1 || '').trim() ||
+            (localConfig.subheadline_h2 || '').trim() ||
+            (localConfig.cta_button_text || '').trim()
               ));
           const disabled = isGenerating || !hasConnection || !hasTextFilled;
           const title = !hasConnection

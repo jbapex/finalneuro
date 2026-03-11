@@ -1,7 +1,14 @@
 import React, { useMemo } from 'react';
 import { applyModuleColors } from '@/lib/applyModuleColors';
 
-const IFRAME_BODY_STYLE = 'body { margin: 0; font-family: sans-serif; background: #fff; }';
+const IFRAME_BODY_STYLE = [
+  'html, body { margin: 0; font-family: sans-serif; background: #fff; overflow-x: auto; overflow-y: auto; min-height: 100%; }',
+  '#root { min-width: min-content; }',
+].join(' ');
+
+/** Google Fonts variadas para tipografia personalizada (evitar look genérico). */
+const GOOGLE_FONTS_LINK =
+  '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=DM+Serif+Display&family=Space+Grotesk:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700&family=Manrope:wght@400;500;600;700&display=swap">';
 
 /** Escapa conteúdo para injeção no documento do iframe (evita quebrar </script>, </body>, </html>). */
 function escapeHtmlForIframe(html) {
@@ -61,6 +68,7 @@ function buildHtmlFromPageStructure(pageStructure) {
     '<!DOCTYPE html>',
     '<html lang="pt-BR">',
     '<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    GOOGLE_FONTS_LINK,
     '<script src="https://cdn.tailwindcss.com"></script>',
     '<style>' + IFRAME_BODY_STYLE + '</style>',
     '</head><body><div id="root">',
@@ -93,6 +101,7 @@ const PreviewPanel = ({
       '<!DOCTYPE html>',
       '<html lang="pt-BR">',
       '<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">',
+      GOOGLE_FONTS_LINK,
       '<script src="https://cdn.tailwindcss.com"></script>',
       '<style>' + IFRAME_BODY_STYLE + '</style>',
       '</head><body><div id="root">',
@@ -102,7 +111,7 @@ const PreviewPanel = ({
   }, [pageStructure, htmlContent]);
 
   return (
-    <div className="relative flex-1 min-h-0 w-full min-h-[300px] bg-muted/30 rounded-lg overflow-hidden">
+    <div className="relative flex-1 min-h-0 w-full min-w-0 h-full min-h-[400px] overflow-hidden">
       {isBuilding && (
         <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
           <p className="text-sm text-muted-foreground">Construindo sua página...</p>
@@ -111,7 +120,7 @@ const PreviewPanel = ({
       <iframe
         srcDoc={fullHtml}
         title="Preview do site"
-        className="w-full h-full min-h-[400px] border-0 rounded-lg"
+        className="w-full h-full min-h-[400px] border-0"
         sandbox="allow-scripts allow-same-origin"
       />
     </div>

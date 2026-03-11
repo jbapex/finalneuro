@@ -6,7 +6,7 @@ set -e
 REPO="/root/nero2.0"
 VOLUME_FUNCTIONS="/root/supabase/docker/volumes/functions"
 NEUROAPICE="/root/neuroapice"
-FUNCTION_DIRS="download-video generate-content generic-ai-chat get-google-models get-video-metadata neurodesign-generate neurodesign-generate-google neurodesign-refine neurodesign-refine-google page-analyzer"
+FUNCTION_DIRS="download-video generate-content generic-ai-chat get-google-models get-openai-models get-openrouter-models get-video-metadata neurodesign-generate neurodesign-generate-google neurodesign-refine neurodesign-refine-google page-analyzer site-builder-assistant"
 
 echo "=== 1. Git pull ==="
 cd "$REPO"
