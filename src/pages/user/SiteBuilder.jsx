@@ -214,9 +214,9 @@ const SiteBuilder = () => {
       const d = event.data;
       if (d?.type !== 'site-preview-click' || !d.dataId) return;
       const dataType = (d.dataType || 'text').toLowerCase();
-      setSelectedElement({ type: dataType, dataId: d.dataId });
+      setSelectedElement({ type: dataType, dataId: d.dataId, src: d.src });
       if (dataType === 'image') {
-        setIsImageBankOpen(true);
+        // Removido setIsImageBankOpen(true) para abrir o dialog de edição de imagem primeiro
       } else if (['heading', 'text', 'button'].includes(dataType)) {
         const initial = d.textContent != null ? String(d.textContent) : '';
         setTextEditElement({
@@ -714,6 +714,49 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
               Cancelar
             </Button>
             <Button onClick={() => saveTextEdit(textEditValue)}>Salvar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={selectedElement?.type === 'image' && !isImageBankOpen} onOpenChange={(open) => { if (!open) { setSelectedElement(null); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar Imagem</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>URL da Imagem</Label>
+              <Input
+                value={selectedElement?.src || ''}
+                onChange={(e) => setSelectedElement(prev => ({ ...prev, src: e.target.value }))}
+                placeholder="https://exemplo.com/imagem.jpg"
+              />
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex-1 border-t"></div>
+              <span className="text-xs text-muted-foreground uppercase">OU</span>
+              <div className="flex-1 border-t"></div>
+            </div>
+            <Button 
+              variant="outline" 
+              className="w-full" 
+              onClick={() => setIsImageBankOpen(true)}
+            >
+              <ImagePlus className="h-4 w-4 mr-2" />
+              Escolher do Banco de Imagens
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedElement(null)}>
+              Cancelar
+            </Button>
+            <Button onClick={() => {
+              if (selectedElement?.src) {
+                onImageSelect({ signedUrl: selectedElement.src });
+              }
+            }}>
+              Salvar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
