@@ -25,6 +25,31 @@ const PREVIEW_CLICK_SCRIPT = `
 (function(){
   document.addEventListener('click', function(e) {
     var el = e.target;
+    
+    // Se clicou em uma div que tem background-image
+    if (el.tagName === 'DIV') {
+      var style = window.getComputedStyle(el);
+      if (style.backgroundImage && style.backgroundImage !== 'none') {
+        var id = el.getAttribute('data-id');
+        if (id) {
+          // Extrai a URL do background-image (ex: url("https://...") -> https://...)
+          var bgUrl = style.backgroundImage.replace(/^url\\(['"]?/, '').replace(/['"]?\\)$/, '');
+          window.parent.postMessage({
+            type: 'site-preview-click',
+            dataId: id,
+            dataType: 'image',
+            tagName: el.tagName,
+            textContent: '',
+            src: bgUrl,
+            isBackground: true
+          }, '*');
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
+    }
+
     while (el && el !== document.body) {
       var id = el.getAttribute('data-id');
       if (id) {

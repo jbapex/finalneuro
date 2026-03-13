@@ -215,7 +215,12 @@ const SiteBuilder = () => {
       const d = event.data;
       if (d?.type !== 'site-preview-click' || !d.dataId) return;
       const dataType = (d.dataType || 'text').toLowerCase();
-      setSelectedElement({ type: dataType, dataId: d.dataId, src: d.src });
+      setSelectedElement({ 
+        type: dataType, 
+        dataId: d.dataId, 
+        src: d.src,
+        isBackground: d.isBackground 
+      });
       if (dataType === 'image') {
         // Removido setIsImageBankOpen(true) para abrir o dialog de edição de imagem primeiro
       } else if (['heading', 'text', 'button'].includes(dataType)) {
@@ -540,13 +545,32 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
     setHtmlContent(prevContent => {
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = prevContent;
-      const imgToUpdate = tempDiv.querySelector(`img[data-id="${currentSelectedElement.dataId}"]`);
-      if (imgToUpdate) {
-        imgToUpdate.src = signedUrl;
-        imgToUpdate.alt = image.alt_text || '';
-        toast({ title: 'Imagem atualizada com sucesso!' });
-        return tempDiv.innerHTML;
+      
+      let imgToUpdate;
+      if (currentSelectedElement.isBackground) {
+        imgToUpdate = tempDiv.querySelector(`div[data-id="${currentSelectedElement.dataId}"]`);
+        if (imgToUpdate) {
+          const currentStyle = imgToUpdate.getAttribute('style') || '';
+          // Remove qualquer background-image existente e adiciona a nova
+          const newStyle = currentStyle.replace(/background-image:\s*url\([^)]+\);?/, '') 
+                         + ` background-image: url('${signedUrl}');`;
+          imgToUpdate.setAttribute('style', newStyle.trim());
+          toast({ title: 'Imagem de fundo atualizada com sucesso!' });
+          return tempDiv.innerHTML;
+        }
+      } else {
+        imgToUpdate = tempDiv.querySelector(`img[data-id="${currentSelectedElement.dataId}"]`);
+        if (imgToUpdate) {
+          imgToUpdate.src = signedUrl;
+          // Só atualiza o alt se vier do banco de imagens (tem alt_text)
+          if (image.alt_text !== undefined) {
+            imgToUpdate.alt = image.alt_text || '';
+          }
+          toast({ title: 'Imagem atualizada com sucesso!' });
+          return tempDiv.innerHTML;
+        }
       }
+      
       toast({ title: 'Erro ao atualizar imagem', variant: 'destructive' });
       return prevContent;
     });
