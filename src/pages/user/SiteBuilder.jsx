@@ -662,7 +662,7 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
                   selectedElement={selectedElement}
                   setSelectedElement={setSelectedElement}
                   onOpenImageBank={() => setIsImageBankOpen(true)}
-                  isBuilding={isBuilding}
+                  isBuilding={isSendingChat}
                 />
               </div>
             </div>

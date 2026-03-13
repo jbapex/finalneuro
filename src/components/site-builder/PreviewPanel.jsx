@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { applyModuleColors } from '@/lib/applyModuleColors';
+import NeuralNetworkCanvas from '@/components/ui/NeuralNetworkCanvas';
 
 const IFRAME_BODY_STYLE = [
   'html, body { margin: 0; font-family: sans-serif; background: #fff; overflow-x: auto; overflow-y: auto; min-height: 100%; }',
@@ -96,7 +97,7 @@ const PreviewPanel = ({
     const hasContent = safeContent.trim().length > 0;
     const rootContent = hasContent
       ? safeContent
-      : '<p style="padding:1.5rem;color:#666;font-size:0.875rem;">Nenhum conteúdo ainda. Use o painel ao lado para criar sua página.</p>';
+      : '';
     return [
       '<!DOCTYPE html>',
       '<html lang="pt-BR">',
@@ -110,11 +111,28 @@ const PreviewPanel = ({
     ].join('');
   }, [pageStructure, htmlContent]);
 
+  const hasContent = useMemo(() => {
+    if (pageStructure && pageStructure.length > 0) return true;
+    if (htmlContent && htmlContent.trim().length > 0) return true;
+    return false;
+  }, [pageStructure, htmlContent]);
+
   return (
     <div className="relative flex-1 min-h-0 w-full min-w-0 h-full min-h-[400px] overflow-hidden">
       {isBuilding && (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80">
-          <p className="text-sm text-muted-foreground">Construindo sua página...</p>
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="relative w-full max-w-[250px] aspect-square flex items-center justify-center mb-4">
+            <NeuralNetworkCanvas isActive={true} />
+          </div>
+          <p className="text-sm text-muted-foreground animate-pulse">Construindo sua página...</p>
+        </div>
+      )}
+      {!isBuilding && !hasContent && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-muted/30">
+          <div className="relative w-full max-w-[250px] aspect-square flex items-center justify-center mb-4">
+            <NeuralNetworkCanvas isActive={false} />
+          </div>
+          <p className="text-sm text-muted-foreground">Nenhum conteúdo ainda. Use o chat para gerar seu site.</p>
         </div>
       )}
       <iframe
