@@ -16,6 +16,7 @@ import ScheduleVisualizer from './visualizers/ScheduleVisualizer';
 import VideoIdeasVisualizer from './visualizers/VideoIdeasVisualizer';
 import EditWithAiModal from './EditWithAiModal';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { getFriendlyErrorMessage } from '@/lib/utils';
 
 const visualizers = {
   objective: ObjectiveVisualizer,
@@ -166,7 +167,8 @@ const StepCard = ({ step, title, description, planningId, initialData, onUpdate,
       toast({ title: `Etapa "${title}" ${userPromptText || customFullPrompt ? 'refinada' : 'gerada'}!`, description: 'O conteúdo foi criado com sucesso.' });
 
     } catch (error) {
-      toast({ title: `Erro ao ${userPromptText || customFullPrompt ? 'refinar' : 'gerar'} ${title}`, description: error.message, variant: 'destructive' });
+      const friendlyMsg = getFriendlyErrorMessage(error);
+      toast({ title: `Aviso ao ${userPromptText || customFullPrompt ? 'refinar' : 'gerar'} ${title}`, description: friendlyMsg, variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }

@@ -42,6 +42,7 @@ const allTools = [
         icon: <Palette className="h-8 w-8 text-primary" />,
         path: '/ferramentas/neurodesign',
         permissionKey: null,
+        highlight: true,
     },
     {
         title: 'Artes de Culto',
@@ -101,13 +102,18 @@ const ToolCard = ({ tool, isAllowed }) => {
         <div 
             onClick={handleClick}
             className={cn(
-                "group relative h-full",
-                isAllowed ? "cursor-pointer" : "cursor-not-allowed"
+                "group relative h-full rounded-xl transition-all duration-300",
+                isAllowed ? "cursor-pointer" : "cursor-not-allowed",
+                tool.highlight && "ring-2 ring-primary/50 ring-offset-2 ring-offset-background shadow-[0_0_30px_hsl(var(--primary)/0.3)] hover:shadow-[0_0_40px_hsl(var(--primary)/0.5)]"
             )}
         >
+            {tool.highlight && (
+                <div className="absolute -inset-1 bg-gradient-to-r from-primary to-purple-400 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-500 animate-pulse"></div>
+            )}
             <Card className={cn(
-                "h-full transition-all duration-300 ease-in-out",
-                isAllowed ? "hover:shadow-lg hover:border-primary/50 hover:scale-105" : "bg-muted/50 opacity-70"
+                "h-full transition-all duration-300 ease-in-out relative bg-card",
+                isAllowed ? "hover:scale-[1.02]" : "bg-muted/50 opacity-70",
+                tool.highlight && "border-primary/50"
             )}>
                 {!isAllowed && (
                     <div className="absolute top-3 right-3 bg-secondary p-2 rounded-full z-10 border">

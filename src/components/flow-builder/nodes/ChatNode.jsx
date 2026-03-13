@@ -11,6 +11,7 @@ import React, { useState, useEffect, useRef } from 'react';
     import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
     import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
     import { useAuth } from '@/contexts/SupabaseAuthContext';
+    import { getFriendlyErrorMessage } from '@/lib/utils';
 
     const fieldTranslations = {
         name: 'Nome',
@@ -261,9 +262,10 @@ import React, { useState, useEffect, useRef } from 'react';
           setMessages(existingMessages);
           onUpdateNodeData(id, { messages: existingMessages });
           setInput(originalInput);
+          const friendlyMsg = getFriendlyErrorMessage(err);
           toast({
-            title: 'Erro na comunicação com a IA',
-            description: `Ocorreu um erro ao tentar obter uma resposta. Por favor, tente novamente. Detalhe: ${err.message}`,
+            title: 'Aviso',
+            description: friendlyMsg,
             variant: 'destructive',
           });
         } finally {

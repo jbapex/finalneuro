@@ -323,14 +323,30 @@ async function fetchImageAsBase64(imageUrl: string): Promise<{ data: string; mim
     const res = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();
+    
+    // Otimização de memória: se a imagem for muito grande (> 2MB), não vamos converter para base64
+    // para evitar estourar a memória da Edge Function.
+    if (buf.byteLength > 2 * 1024 * 1024) {
+      console.warn(`Imagem ignorada por ser muito grande: ${buf.byteLength} bytes`);
+      return null;
+    }
+    
     const bytes = new Uint8Array(buf);
     let binary = "";
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    
+    // Processamento em chunks menores para não estourar a call stack
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    
     const data = btoa(binary);
     const contentType = res.headers.get("content-type") || "";
     const mimeType = contentType.includes("png") ? "image/png" : contentType.includes("webp") ? "image/webp" : "image/jpeg";
     return { data, mimeType };
-  } catch {
+  } catch (e) {
+    console.error("Erro ao baixar imagem:", e);
     return null;
   }
 }
@@ -606,9 +622,24 @@ serve(async (req) => {
 
     const { data: toKeep } = await supabase.from("neurodesign_generated_images").select("id").eq("project_id", projectId).order("created_at", { ascending: false }).range(0, 4);
     const keepSet = new Set((toKeep || []).map((r) => r.id));
-    const { data: all } = await supabase.from("neurodesign_generated_images").select("id").eq("project_id", projectId);
-    const idsToDelete = (all || []).filter((r) => !keepSet.has(r.id)).map((r) => r.id);
-    if (idsToDelete.length > 0) await supabase.from("neurodesign_generated_images").delete().in("id", idsToDelete);
+    
+    // Deleta imagens que não estão entre as 5 mais recentes OU que são mais antigas que 1 hora
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: all } = await supabase.from("neurodesign_generated_images").select("id, created_at").eq("project_id", projectId);
+    
+    const idsToDelete = (all || [])
+      .filter((r) => !keepSet.has(r.id) || r.created_at < oneHourAgo)
+      .map((r) => r.id);
+      
+    if (idsToDelete.length > 0) {
+      await supabase.from("neurodesign_generated_images").delete().in("id", idsToDelete);
+    }
+
+    // Deleta os runs (histórico de geração) que são mais antigos que 1 hora para liberar espaço
+    await supabase.from("neurodesign_generation_runs")
+      .delete()
+      .eq("project_id", projectId)
+      .lt("created_at", oneHourAgo);
 
     const payload = insertedImages?.length
       ? insertedImages

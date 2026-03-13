@@ -17,6 +17,8 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 
 const CONTEXT_INSTRUCTION = `Na mensagem do usuário pode aparecer um bloco [CONTEXTO] com dados do módulo, cliente, campanha e documentos de contexto. Use sempre essas informações para personalizar e fundamentar sua resposta. Não peça ao usuário dados que já constem no [CONTEXTO].`;
 
+import { getFriendlyErrorMessage } from '@/lib/utils';
+
 const ModuleChat = () => {
   const { moduleId } = useParams();
   const { toast } = useToast();
@@ -429,8 +431,9 @@ const ModuleChat = () => {
           toast({ title: `Conteúdo ${isRefining ? 'refinado' : 'gerado'} com sucesso!` });
         }
     } catch (error) {
-        setGeneratedContent(`Ocorreu um erro ao gerar o conteúdo: ${error.message}`);
-        toast({ title: "Erro na Geração", description: error.message, variant: "destructive" });
+        const friendlyMsg = getFriendlyErrorMessage(error);
+        setGeneratedContent(`Ocorreu um erro ao gerar o conteúdo: ${friendlyMsg}`);
+        toast({ title: "Aviso", description: friendlyMsg, variant: "destructive" });
     } finally {
         setIsLoading(false);
     }

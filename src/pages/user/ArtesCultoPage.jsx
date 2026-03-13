@@ -17,6 +17,8 @@ import NeuroDesignErrorBoundary from '@/components/neurodesign/NeuroDesignErrorB
 
 const PROJECT_TYPE = 'church_art';
 
+import { getFriendlyErrorMessage } from '@/lib/utils';
+
 const ArtesCultoPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -165,7 +167,7 @@ const ArtesCultoPage = () => {
 
   const fetchImages = useCallback((projectId) => {
     if (!projectId) return;
-    supabase.from('neurodesign_generated_images').select('*').eq('project_id', projectId).order('created_at', { ascending: false }).then(({ data, error }) => {
+    supabase.from('neurodesign_generated_images').select('id, run_id, project_id, url, thumbnail_url, width, height, created_at').eq('project_id', projectId).order('created_at', { ascending: false }).then(({ data, error }) => {
       if (error) toast({ title: 'Erro ao carregar imagens', description: error.message, variant: 'destructive' });
       else setImages(data || []);
     });
@@ -178,7 +180,7 @@ const ArtesCultoPage = () => {
     const projectIds = projects.map((p) => p.id).filter(Boolean);
     const from = page * USER_GALLERY_PAGE_SIZE;
     const to = from + USER_GALLERY_PAGE_SIZE - 1;
-    const { data, error } = await supabase.from('neurodesign_generated_images').select('*').in('project_id', projectIds).order('created_at', { ascending: false }).range(from, to);
+    const { data, error } = await supabase.from('neurodesign_generated_images').select('id, run_id, project_id, url, thumbnail_url, width, height, created_at').in('project_id', projectIds).order('created_at', { ascending: false }).range(from, to);
     setIsLoadingUserGallery(false);
     if (error) { toast({ title: 'Erro ao carregar galeria', description: error.message, variant: 'destructive' }); if (reset) setImages([]); return; }
     const batch = data || [];
@@ -233,7 +235,8 @@ const ArtesCultoPage = () => {
         setTimeout(() => fetchImages(selectedProject.id), 2500);
       } else toast({ title: 'Geração concluída', description: 'Nenhuma imagem retornada.', variant: 'destructive' });
     } catch (e) {
-      toast({ title: 'Erro ao gerar', description: e?.message || 'Erro desconhecido', variant: 'destructive' });
+      const friendlyMsg = getFriendlyErrorMessage(e);
+      toast({ title: 'Aviso', description: friendlyMsg, variant: 'destructive' });
     } finally {
       generatingRef.current = false;
       setIsGenerating(false);
@@ -275,7 +278,8 @@ const ArtesCultoPage = () => {
         setTimeout(() => fetchImages(selectedProject.id), 2500);
       }
     } catch (e) {
-      toast({ title: 'Erro ao refinar', description: e?.message, variant: 'destructive' });
+      const friendlyMsg = getFriendlyErrorMessage(e);
+      toast({ title: 'Aviso', description: friendlyMsg, variant: 'destructive' });
     } finally {
       refiningRef.current = false;
       setIsRefining(false);

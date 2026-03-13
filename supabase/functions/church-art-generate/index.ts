@@ -389,9 +389,24 @@ serve(async (req) => {
 
     const { data: toKeep } = await supabase.from("neurodesign_generated_images").select("id").eq("project_id", projectId).order("created_at", { ascending: false }).range(0, 4);
     const keepSet = new Set((toKeep || []).map((r) => r.id));
-    const { data: all } = await supabase.from("neurodesign_generated_images").select("id").eq("project_id", projectId);
-    const idsToDelete = (all || []).filter((r) => !keepSet.has(r.id)).map((r) => r.id);
-    if (idsToDelete.length > 0) await supabase.from("neurodesign_generated_images").delete().in("id", idsToDelete);
+    
+    // Deleta imagens que não estão entre as 5 mais recentes OU que são mais antigas que 1 hora
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const { data: all } = await supabase.from("neurodesign_generated_images").select("id, created_at").eq("project_id", projectId);
+    
+    const idsToDelete = (all || [])
+      .filter((r) => !keepSet.has(r.id) || r.created_at < oneHourAgo)
+      .map((r) => r.id);
+      
+    if (idsToDelete.length > 0) {
+      await supabase.from("neurodesign_generated_images").delete().in("id", idsToDelete);
+    }
+
+    // Deleta os runs (histórico de geração) que são mais antigos que 1 hora para liberar espaço
+    await supabase.from("neurodesign_generation_runs")
+      .delete()
+      .eq("project_id", projectId)
+      .lt("created_at", oneHourAgo);
 
     const payload = insertedImages?.length
       ? insertedImages

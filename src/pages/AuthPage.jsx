@@ -122,7 +122,7 @@ const AuthPage = () => {
       const isNetwork = /fetch|network|failed to fetch|cors|timeout|unreachable/i.test(raw) || error?.name === 'TypeError';
       const isTimeout = raw.includes('demorando');
       const isCredentialError = /invalid.*credential|invalid.*login|email not confirmed/i.test(raw);
-      const isBadKey = (status === 401 || status === 403) && !isCredentialError && /key|api/i.test(raw) && !/jwt|token/i.test(raw);
+      const isBadKey = (status === 401 || status === 403) && !isCredentialError && /jwt|key|api|token/i.test(raw);
       let title = "Erro de Autenticação";
       let message = raw || "Verifique suas credenciais e tente novamente.";
       if (isAlreadyRegistered || (status === 422 && /already|registered/i.test(raw))) {

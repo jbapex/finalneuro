@@ -53,14 +53,25 @@ async function imageUrlToBase64(imageUrl: string): Promise<{ data: string; mimeT
     const res = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) });
     if (!res.ok) return null;
     const buf = await res.arrayBuffer();
+    
+    if (buf.byteLength > 2 * 1024 * 1024) {
+      console.warn(`Imagem ignorada por ser muito grande: ${buf.byteLength} bytes`);
+      return null;
+    }
+    
     const bytes = new Uint8Array(buf);
     let binary = "";
-    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
     const data = btoa(binary);
     const contentType = res.headers.get("content-type") || "";
     const mimeType = contentType.includes("png") ? "image/png" : contentType.includes("webp") ? "image/webp" : "image/jpeg";
     return { data, mimeType };
-  } catch {
+  } catch (e) {
+    console.error("Erro ao baixar imagem:", e);
     return null;
   }
 }

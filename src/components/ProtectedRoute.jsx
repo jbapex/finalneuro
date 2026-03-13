@@ -26,7 +26,7 @@ const ProtectedRoute = ({ children, allowedRoles, permissionKey }) => {
     if (userType === 'super_admin') {
       return <Navigate to="/superadmin/dashboard" replace />;
     }
-    return <Navigate to="/campanhas" replace />;
+    return <Navigate to="/ferramentas" replace />;
   }
   
   if (permissionKey && !hasPermission(permissionKey)) {
@@ -36,10 +36,7 @@ const ProtectedRoute = ({ children, allowedRoles, permissionKey }) => {
         variant: "destructive",
       });
       
-      if (location.pathname.startsWith('/ferramentas')) {
-        return <Navigate to="/ferramentas" replace />;
-      }
-      return <Navigate to="/campanhas" replace />;
+      return <Navigate to="/ferramentas" replace />;
   }
 
 

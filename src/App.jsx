@@ -72,11 +72,11 @@ import React from 'react';
         );
       }
     
-      const getHomeRedirect = () => {
-        if (!user || !profile) return "/auth";
-        if (profile.user_type === 'super_admin') return "/superadmin/dashboard";
-        return "/campanhas";
-      };
+  const getHomeRedirect = () => {
+    if (!user || !profile) return "/auth";
+    if (profile.user_type === 'super_admin') return "/superadmin/dashboard";
+    return "/ferramentas";
+  };
       
       const homeRedirectPath = getHomeRedirect();
     

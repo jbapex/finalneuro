@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { getFriendlyErrorMessage } from '@/lib/utils';
 
 const LlmIntegrationSelector = ({ integrations, selectedId, onSelect, disabled }) => {
     const [open, setOpen] = useState(false);
@@ -339,9 +340,10 @@ Instruções Adicionais: ${refinePrompt ? `Refine o seguinte texto:\n\n${data.ge
             }
 
         } catch (err) {
+            const friendlyMsg = getFriendlyErrorMessage(err);
             toast({
-                title: 'Erro ao processar conteúdo',
-                description: err.message,
+                title: 'Aviso',
+                description: friendlyMsg,
                 variant: 'destructive',
             });
         } finally {

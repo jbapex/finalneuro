@@ -26,6 +26,8 @@ const schema = z.object({
   objective: z.string().nonempty({ message: "O objetivo é obrigatório." }),
 });
 
+import { getFriendlyErrorMessage } from '@/lib/utils';
+
 const CampaignAnalyzer = () => {
   const [view, setView] = useState('form'); // form, results, history
   const [filePayload, setFilePayload] = useState(null);
@@ -126,7 +128,9 @@ const CampaignAnalyzer = () => {
         toast({ title: "Análise Concluída!", description: "Relatório gerado com sucesso.", variant: "success" });
 
     } catch (err) {
-       setError(err.message || 'Ocorreu um erro desconhecido.');
+       const friendlyMsg = getFriendlyErrorMessage(err);
+       setError(friendlyMsg);
+       toast({ title: 'Aviso', description: friendlyMsg, variant: 'destructive' });
        setView('form');
     } finally {
         setIsLoading(false);

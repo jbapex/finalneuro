@@ -16,6 +16,8 @@ import PreviewPanel from '@/components/neurodesign/PreviewPanel';
 import MasonryGallery from '@/components/neurodesign/MasonryGallery';
 import NeuroDesignErrorBoundary from '@/components/neurodesign/NeuroDesignErrorBoundary';
 
+import { getFriendlyErrorMessage } from '@/lib/utils';
+
 const NeuroDesignPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -121,7 +123,7 @@ const NeuroDesignPage = () => {
     if (!projectId) return;
     const { data, error } = await supabase
       .from('neurodesign_generation_runs')
-      .select('*')
+      .select('id, project_id, config_id, type, status, provider, error_message, created_at, updated_at')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false });
     if (error) return;
@@ -132,7 +134,7 @@ const NeuroDesignPage = () => {
     if (!projectId) return;
     const { data, error } = await supabase
       .from('neurodesign_generated_images')
-      .select('*')
+      .select('id, run_id, project_id, url, thumbnail_url, width, height, created_at')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false });
     if (error) {
@@ -161,7 +163,7 @@ const NeuroDesignPage = () => {
       const to = from + USER_GALLERY_PAGE_SIZE - 1;
       const { data, error } = await supabase
         .from('neurodesign_generated_images')
-        .select('*')
+        .select('id, run_id, project_id, url, thumbnail_url, width, height, created_at')
         .in('project_id', projectIds)
         .order('created_at', { ascending: false })
         .range(from, to);
@@ -281,11 +283,12 @@ const NeuroDesignPage = () => {
     } catch (e) {
       const msg = e?.message || 'Erro desconhecido';
       const is429 = /429|quota|rate limit/i.test(msg);
+      const friendlyMsg = getFriendlyErrorMessage(e);
       toast({
-        title: 'Erro ao gerar',
+        title: 'Aviso',
         description: is429
           ? 'Limite de uso da API Google (429) atingido. Aguarde alguns minutos ou verifique seu plano e uso em https://ai.google.dev/gemini-api/docs/rate-limits'
-          : msg,
+          : friendlyMsg,
         variant: 'destructive',
       });
     } finally {
@@ -391,13 +394,14 @@ const NeuroDesignPage = () => {
       const msg = e?.message || 'Erro desconhecido';
       const is429 = /429|quota|rate limit/i.test(msg);
       const isNetwork = /failed to fetch|network error|load failed/i.test(msg);
+      const friendlyMsg = getFriendlyErrorMessage(e);
       toast({
-        title: 'Erro ao refinar',
+        title: 'Aviso',
         description: is429
           ? 'Limite de uso da API Google (429) atingido. Aguarde alguns minutos ou verifique seu plano em https://ai.google.dev/gemini-api/docs/rate-limits'
           : isNetwork
             ? 'Falha de conexão. Verifique sua internet e se as funções do Supabase estão publicadas e ativas.'
-            : msg,
+            : friendlyMsg,
         variant: 'destructive',
       });
     } finally {
@@ -691,7 +695,7 @@ Responda somente com o JSON.`;
         <meta name="description" content="Design Builder premium: crie imagens com controle total de composição." />
       </Helmet>
       <NeuroDesignErrorBoundary>
-      <div className="flex h-[calc(100vh-4rem)] min-h-[400px] bg-muted/40 text-foreground overflow-hidden min-w-0">
+      <div className="flex h-[calc(100vh-4rem)] min-h-[400px] bg-background text-foreground overflow-hidden min-w-0">
         {isLg && (
           <NeuroDesignSidebar
             view={view}
@@ -734,7 +738,7 @@ Responda somente com o JSON.`;
           {view === 'create' && (
             <div className="flex flex-1 min-w-0 min-h-0">
               {isLg && (
-                <div className="w-[420px] xl:w-[480px] shrink-0 overflow-y-auto border-r border-border bg-card min-h-0">
+                <div className="w-[420px] xl:w-[480px] shrink-0 overflow-y-auto border-r border-border bg-background min-h-0">
                   <BuilderPanel
                     project={selectedProject}
                     config={currentConfig}

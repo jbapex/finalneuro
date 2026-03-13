@@ -12,6 +12,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { Textarea } from '@/components/ui/textarea';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { getFriendlyErrorMessage } from '@/lib/utils';
 
 const GenerationStep = ({ campaignData, updateExecutionCount }) => {
   const { toast } = useToast();
@@ -340,7 +341,8 @@ const GenerationStep = ({ campaignData, updateExecutionCount }) => {
 
       fetchOutputs();
     } catch (error) {
-        toast({ title: "Ocorreu um erro ao gerar o conteúdo", description: error.message, variant: "destructive" });
+        const friendlyMsg = getFriendlyErrorMessage(error);
+        toast({ title: "Aviso", description: friendlyMsg, variant: "destructive" });
     } finally {
         setGenerating(false);
     }

@@ -24,6 +24,7 @@ import NeuroDesignFlowModal from '@/components/flow-builder/modals/NeuroDesignFl
 import RefineImageModal from '@/components/flow-builder/modals/RefineImageModal';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
+import { getFriendlyErrorMessage } from '@/lib/utils';
 
 const MIN_SLIDES = 3;
 const MAX_SLIDES = 7;
@@ -651,7 +652,8 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
       setLocalPrompts(newPrompts);
       toast({ title: 'Lâminas preenchidas com IA', description: `${n} lâmina(s) configurada(s) com orientação, brief e config do Neuro Designer. Ajuste se quiser e clique em Salvar.` });
     } catch (e) {
-      toast({ title: 'Erro ao preencher com IA', description: e?.message || 'Tente outra conexão ou verifique os dados.', variant: 'destructive' });
+      const friendlyMsg = getFriendlyErrorMessage(e);
+      toast({ title: 'Aviso', description: friendlyMsg, variant: 'destructive' });
     } finally {
       setIsFillingWithAI(false);
     }
@@ -754,9 +756,10 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
       } catch (e) {
         const msg = e?.message || 'Erro ao gerar';
         const is429 = /429|quota|rate limit/i.test(msg);
+        const friendlyMsg = getFriendlyErrorMessage(e);
         toast({
-          title: 'Erro ao gerar',
-          description: is429 ? 'Limite de uso da API atingido. Aguarde alguns minutos.' : msg,
+          title: 'Aviso',
+          description: is429 ? 'Limite de uso da API atingido. Aguarde alguns minutos.' : friendlyMsg,
           variant: 'destructive',
         });
       } finally {

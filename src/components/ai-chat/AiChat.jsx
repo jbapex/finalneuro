@@ -6,15 +6,17 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
     import { useToast } from '@/components/ui/use-toast';
     import { supabase, supabaseUrl } from '@/lib/customSupabaseClient';
     import { useMediaQuery } from '@/hooks/use-media-query';
-    import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
-    import AiChatSidebar from '@/components/ai-chat/AiChatSidebar';
-    import AiChatMessage from '@/components/ai-chat/AiChatMessage';
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import AiChatSidebar from '@/components/ai-chat/AiChatSidebar';
+import AiChatMessage from '@/components/ai-chat/AiChatMessage';
 import ContextPanel from '@/components/ai-chat/ContextPanel';
 import PromptPanel from '@/components/ai-chat/PromptPanel';
-    import { ScrollArea } from '@/components/ui/scroll-area';
-    import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-    import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-    import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import ThemeToggle from '@/components/ThemeToggle';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { getFriendlyErrorMessage } from '@/lib/utils';
 
 const DEEP_RESEARCH_SYSTEM_PROMPT =
   'Você está no modo Deep Research. Para cada pergunta, faça uma análise profunda, traga contexto, compare alternativas e apresente um resumo final com próximos passos práticos. Seja estruturado, organizado em tópicos e indique fontes ou hipóteses quando não tiver certeza.';
@@ -558,8 +560,8 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
             setMessages(prev => prev.slice(0, -1));
             setInput(originalInput);
             toast({
-              title: 'Erro na comunicação com a IA',
-              description: err.message,
+              title: 'Aviso',
+              description: getFriendlyErrorMessage(err),
               variant: 'destructive',
             });
           }
@@ -864,7 +866,7 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
                         <div className="w-8"></div>
                     </div>
 
-                    <div className="px-4 py-3 border-b border-border/50 bg-background dark:bg-[#1A1A1D] flex items-center justify-between gap-4">
+                    <div className="h-14 lg:h-[60px] px-4 border-b border-border/50 bg-background dark:bg-[#1A1A1D] flex items-center justify-between gap-4 shrink-0">
                       <div className="flex-1 flex justify-start">
                         <LlmIntegrationCombobox
                                 integrations={llmIntegrations}
@@ -874,14 +876,12 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
                         />
                       </div>
                       <div className="flex items-center gap-1 w-20 justify-end">
+                        <ThemeToggle />
                         <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" title="Configurações">
                           <Settings2 className="h-4 w-4" />
                         </Button>
                         <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" title="Compartilhar">
                           <Share2 className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-9 w-9 text-muted-foreground hover:text-foreground" title="Download">
-                          <Download className="h-4 w-4" />
                         </Button>
                       </div>
                     </div>

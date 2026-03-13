@@ -48,6 +48,8 @@ const DEFAULT_HTML_TEMPLATE = `
 </section>
 `;
 
+import { getFriendlyErrorMessage } from '@/lib/utils';
+
 const SiteBuilder = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
@@ -479,7 +481,8 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
           variant: 'destructive',
         });
       } else {
-        toast({ title: 'Erro no chat', description: msg || 'Não foi possível enviar a mensagem.', variant: 'destructive' });
+        const friendlyMsg = getFriendlyErrorMessage(e);
+        toast({ title: 'Aviso', description: friendlyMsg, variant: 'destructive' });
       }
     } finally {
       setIsSendingChat(false);

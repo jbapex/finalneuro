@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 import NeuroDesignFlowModal from '@/components/flow-builder/modals/NeuroDesignFlowModal';
 import { mergeFlowInputDataIntoConfig } from '@/lib/neurodesign/flowConfigMerge';
 import { neuroDesignDefaultConfig } from '@/lib/neurodesign/defaultConfig';
+import { getFriendlyErrorMessage } from '@/lib/utils';
 
 const DIMENSION_OPTIONS = [
   { value: '1:1', label: '1:1' },
@@ -263,14 +264,19 @@ const ImageGeneratorNode = memo(({ data, id }) => {
       const msg = e?.message || 'Erro ao gerar';
       const is429 = /429|quota|rate limit/i.test(msg);
       const isNoImages = /sem imagens|bloqueado|SAFETY|sem resultado|não retornou|filtro de conteúdo/i.test(msg);
-      const friendlyDesc = is429
-        ? 'Limite de uso da API atingido. Aguarde alguns minutos.'
-        : isNoImages
-          ? "A API não retornou imagem. Pode ser filtro de conteúdo ou limite. Tente outro prompt, outra conexão ou 'Configurar e gerar' para ajustar referências."
-          : msg;
+      
+      let friendlyDesc = msg;
+      if (is429) {
+        friendlyDesc = 'Limite de uso da API atingido. Aguarde alguns minutos.';
+      } else if (isNoImages) {
+        friendlyDesc = "A API não retornou imagem. Pode ser filtro de conteúdo ou limite. Tente outro prompt, outra conexão ou 'Configurar e gerar' para ajustar referências.";
+      } else {
+        friendlyDesc = getFriendlyErrorMessage(e);
+      }
+      
       setLastError(friendlyDesc);
       toast({
-        title: 'Erro ao gerar',
+        title: 'Aviso',
         description: friendlyDesc,
         variant: 'destructive',
       });

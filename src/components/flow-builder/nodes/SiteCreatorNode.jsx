@@ -11,6 +11,7 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import SiteBuilderModal from '@/components/flow-builder/modals/SiteBuilderModal';
 import { useParams } from 'react-router-dom';
+import { getFriendlyErrorMessage } from '@/lib/utils';
 
 const SiteCreatorNode = memo(({ id, data }) => {
   const { onUpdateNodeData, output, consumedNodeIds = [] } = data;
@@ -109,7 +110,8 @@ const SiteCreatorNode = memo(({ id, data }) => {
       }
 
     } catch (error) {
-      toast({ title: 'Erro ao iniciar a criação do projeto', description: error.message, variant: 'destructive' });
+      const friendlyMsg = getFriendlyErrorMessage(error);
+      toast({ title: 'Aviso', description: friendlyMsg, variant: 'destructive' });
       setIsLoading(false);
     }
   };

@@ -10,6 +10,8 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import EditWithAiModal from '@/components/strategic-planner/EditWithAiModal';
 
+import { getFriendlyErrorMessage } from '@/lib/utils';
+
 const AdsAgentChat = () => {
   const { agentId } = useParams();
   const { user } = useAuth();
@@ -97,7 +99,8 @@ const AdsAgentChat = () => {
         }
         
     } catch (error) {
-        toast({ title: 'Erro ao gerar conteúdo', description: error.message, variant: 'destructive' });
+        const friendlyMsg = getFriendlyErrorMessage(error);
+        toast({ title: 'Aviso', description: friendlyMsg, variant: 'destructive' });
     } finally {
         setLoading(prev => ({ ...prev, generation: false }));
     }

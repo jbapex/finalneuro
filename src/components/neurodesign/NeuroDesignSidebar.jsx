@@ -21,7 +21,7 @@ const NeuroDesignSidebar = ({
     onCloseDrawer?.();
   };
 
-  const asideClass = wrapperClassName ?? 'w-64 shrink-0 border-r border-border bg-card flex flex-col';
+  const asideClass = wrapperClassName ?? 'w-64 shrink-0 border-r border-border bg-background flex flex-col';
   return (
     <aside className={asideClass}>
       <div className="p-4 border-b border-border">
