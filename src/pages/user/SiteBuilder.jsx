@@ -7,6 +7,7 @@ import { Helmet } from 'react-helmet';
 import { Loader2, ArrowLeft, ImagePlus } from 'lucide-react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
