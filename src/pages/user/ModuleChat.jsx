@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import EditWithAiModal from '@/components/strategic-planner/EditWithAiModal';
 import ReactMarkdown from 'react-markdown';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import NeuralNetworkCanvas from '@/components/ui/NeuralNetworkCanvas';
 
 const CONTEXT_INSTRUCTION = `Na mensagem do usuário pode aparecer um bloco [CONTEXTO] com dados do módulo, cliente, campanha e documentos de contexto. Use sempre essas informações para personalizar e fundamentar sua resposta. Não peça ao usuário dados que já constem no [CONTEXTO].`;
 
@@ -617,17 +618,22 @@ const ModuleChat = () => {
               <CardDescription>Aqui está o conteúdo criado pela IA.</CardDescription>
             </CardHeader>
             <CardContent className="relative h-full flex flex-col">
-              {isLoading && <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/50 backdrop-blur-sm z-10 rounded-md">
-                <Loader2 className="w-8 h-8 animate-spin text-primary mb-4" />
-                <p className="text-muted-foreground">Gerando conteúdo...</p>
-              </div>}
-              <div className="flex-grow overflow-y-auto p-4 rounded-md bg-muted min-h-[300px]">
-                {generatedContent ? (
+              {isLoading || !generatedContent ? (
+                <div className="flex-grow flex flex-col items-center justify-center p-4 rounded-md bg-muted min-h-[300px]">
+                  <div className="relative w-full max-w-[250px] aspect-square flex items-center justify-center mb-4">
+                    <NeuralNetworkCanvas isActive={isLoading} />
+                  </div>
+                  {isLoading ? (
+                    <p className="text-muted-foreground animate-pulse">Gerando conteúdo...</p>
+                  ) : (
+                    <p className="text-muted-foreground">O resultado aparecerá aqui.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="flex-grow overflow-y-auto p-4 rounded-md bg-muted min-h-[300px]">
                   <ReactMarkdown className="prose prose-sm dark:prose-invert max-w-none">{generatedContent}</ReactMarkdown>
-                ) : (
-                  <span className="text-muted-foreground">O resultado aparecerá aqui.</span>
-                )}
-              </div>
+                </div>
+              )}
               {generatedContent && !isLoading && (
                 <div className="flex items-center gap-2 mt-4">
                   <EditWithAiModal
