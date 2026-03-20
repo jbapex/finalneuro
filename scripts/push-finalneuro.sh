@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
 # Push de main → https://github.com/jbapex/finalneuro
 #
-# Forma que funciona neste servidor (sem SSH):
-#   cd /root/neuroapice
-#   export GITHUB_TOKEN=ghp_xxx   # token com scope "repo"
-#   bash scripts/push-finalneuro.sh
+# 1) Cria o ficheiro (uma vez), com o teu token — não commita (.gitignore):
+#      echo 'GITHUB_TOKEN=ghp_xxx' > /root/neuroapice/.env.push.local
+#      chmod 600 /root/neuroapice/.env.push.local
+#
+# 2) Corre:
+#      cd /root/neuroapice && bash scripts/push-finalneuro.sh
+#
+# Ou: export GITHUB_TOKEN=... no terminal (sem ficheiro).
 #
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+
+# Carrega token do ficheiro local (nunca vai para o git)
+if [[ -z "${GITHUB_TOKEN:-}" && -f "$ROOT/.env.push.local" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$ROOT/.env.push.local"
+  set +a
+fi
 
 REPO_HTTPS="https://github.com/jbapex/finalneuro.git"
 
