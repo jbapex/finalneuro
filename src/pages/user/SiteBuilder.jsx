@@ -27,7 +27,11 @@ import {
 
 import ChatPanel from '@/components/site-builder/ChatPanel';
 import PreviewPanel from '@/components/site-builder/PreviewPanel';
+import SiteSectionsPanel from '@/components/site-builder/SiteSectionsPanel';
 import ImageBankModal from '@/components/site-builder/ImageBankModal';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { applySectionImageSrc, getSectionOuterHtml } from '@/lib/siteBuilderSections';
+import { getDefaultAiConnection } from '@/lib/userAiDefaults';
 
 const DEFAULT_HTML_TEMPLATE = `
 <section class="bg-slate-900 text-white" data-section-id="section_0">
@@ -68,6 +72,8 @@ const SiteBuilder = () => {
   const [textEditValue, setTextEditValue] = useState('');
   const [textEditFont, setTextEditFont] = useState(''); // font-family para o elemento em edição ('' = herdar)
   const [insertImageSectionId, setInsertImageSectionId] = useState(null); // sectionId quando abrir ImageBank em modo "inserir"
+  /** Quando o usuário escolhe imagem do banco a partir do painel Seções (substituir por data-id). */
+  const [sectionImageTarget, setSectionImageTarget] = useState(null); // { sectionId, dataId, isBackground }
   const [isSaving, setIsSaving] = useState(false);
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [llmConnections, setLlmConnections] = useState([]);
@@ -159,8 +165,12 @@ const SiteBuilder = () => {
         .eq('user_id', user.id);
       if (error) return;
       const list = (data || []).filter((c) => c.capabilities?.text_generation === true);
+      const preferred = getDefaultAiConnection(user.id, 'llm');
+      if (preferred) {
+        list.sort((a, b) => (String(a.id) === String(preferred) ? -1 : String(b.id) === String(preferred) ? 1 : 0));
+      }
       setLlmConnections(list);
-      setSelectedLlmId((prev) => (list.length > 0 && (!prev || !list.some((c) => c.id === prev)) ? list[0].id : prev));
+      setSelectedLlmId((prev) => (list.length > 0 && (!prev || !list.some((c) => String(c.id) === String(prev))) ? list[0].id : prev));
     } catch (_e) {
       setLlmConnections([]);
     }
@@ -238,12 +248,18 @@ const SiteBuilder = () => {
   }, []);
 
   const getPageContextFromHtml = (html) => {
-    if (!html || typeof html !== 'string') return { section_count: 0, section_ids: [] };
+    if (!html || typeof html !== 'string') return { section_count: 0, section_ids: [], next_section_id: 'section_0' };
     const div = document.createElement('div');
     div.innerHTML = html.trim();
     const children = Array.from(div.children);
     const section_ids = children.map((el, i) => el.getAttribute('data-section-id') || `section_${i}`);
-    return { section_count: children.length, section_ids };
+    let maxIdx = -1;
+    for (const id of section_ids) {
+      const m = /^section_(\d+)$/.exec(String(id));
+      if (m) maxIdx = Math.max(maxIdx, parseInt(m[1], 10));
+    }
+    const next_section_id = `section_${maxIdx + 1}`;
+    return { section_count: children.length, section_ids, next_section_id };
   };
 
   const HORIZONS_SYSTEM_PROMPT_BASE = `Você é o Horizons, designer de sites de uma agência de alta performance. Seu trabalho é criar landing pages ÚNICAS, com identidade visual forte e cara de produto profissional — não templates genéricos.
@@ -256,9 +272,11 @@ DESIGN OBRIGATÓRIO (NÃO IGNORAR):
 - Layout responsivo (mobile-first), semântico (header, main, section, footer, nav), um único h1 por página. Todo elemento editável (títulos, parágrafos, botões) deve ter data-id único e data-type="heading"|"text"|"button" conforme o caso.
 
 FORMATOS DE RESPOSTA:
-1) Página inteira: retorne o HTML completo em \`\`\`html ... \`\`\`
-2) Adicionar seção: primeira linha \`<!-- APPEND -->\` dentro do bloco, depois o HTML da seção com data-section-id="section_N".
+1) Página inteira (somente se o usuário pedir explicitamente para recriar/refazer o site inteiro): retorne o HTML completo em \`\`\`html ... \`\`\`
+2) Adicionar seção (caso mais comum quando já existe página): primeira linha \`<!-- APPEND -->\` dentro do bloco, depois APENAS o HTML da nova seção com data-section-id="section_N" (um único elemento <section>...</section>). NÃO reenvie as seções antigas.
 3) Substituir seção: primeira linha \`<!-- REPLACE_SECTION: section_X -->\`, depois o HTML da seção.
+
+REGRA CRÍTICA: Se já existem seções na página atual, NÃO substitua a página inteira ao adicionar uma seção nova. Use SEMPRE <!-- APPEND --> + uma única <section> com data-section-id igual ao próximo id informado no contexto. Só use formato (1) se o usuário pedir página inteira / refazer tudo / do zero.
 
 SEMPRE que o pedido implicar mudança na página, sua resposta DEVE conter o bloco HTML (\`\`\`html ... \`\`\`) com <!-- APPEND --> ou <!-- REPLACE_SECTION --> quando aplicável. Respostas só em texto não atualizam o preview.
 Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, estilo visual) para definir cores, fontes e tom do layout. Priorize HTML quando o usuário pedir seção, hero ou página.`;
@@ -279,7 +297,9 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
         if (parts.length) prompt += `\n\nCONTEXTO DO PROJETO:\n${parts.join('\n')}`;
       }
       if (pageContext && pageContext.section_count > 0) {
-        prompt += `\n\nPÁGINA ATUAL: ${pageContext.section_count} seção(ões) com ids: ${pageContext.section_ids.join(', ')}. Use esses ids ao substituir uma seção (REPLACE_SECTION).`;
+        prompt += `\n\nPÁGINA ATUAL: ${pageContext.section_count} seção(ões) com ids: ${pageContext.section_ids.join(', ')}.`;
+        prompt += `\nPara ADICIONAR uma nova seção, use <!-- APPEND --> e data-section-id="${pageContext.next_section_id}" na nova <section> (não repita o HTML das seções existentes).`;
+        prompt += `\nPara SUBSTITUIR uma seção existente, use <!-- REPLACE_SECTION: section_X -->.`;
       }
       return prompt;
     },
@@ -406,6 +426,61 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
     return currentHtml;
   };
 
+  /**
+   * Quando a IA devolve ```html``` com um único <section> mas sem <!-- APPEND -->, o parser marca como
+   * "full" e apagava a página inteira. Se o usuário pediu nova seção e a resposta é um fragmento de seção,
+   * converte para append com o próximo data-section-id.
+   */
+  const coerceFullToAppendIfNeeded = (currentHtml, userMessage, extracted) => {
+    if (!extracted || extracted.type !== 'full' || !extracted.html) return extracted;
+    const current = (currentHtml || '').trim();
+    if (!current) return extracted;
+
+    const pageCtx = getPageContextFromHtml(current);
+    if (pageCtx.section_count === 0) return extracted;
+
+    const msg = (userMessage || '').trim();
+    const wantsFullRewrite =
+      /p[áa]gina\s+inteira|recriar\s+tudo|reescrever\s+todo|refazer\s+o\s+site|from\s+scratch|substituir\s+tudo|novo\s+site\s+do\s+zero|html\s+completo\s+da\s+p[áa]gina|recrie\s+a\s+p[áa]gina\s+inteira|site\s+completo/i.test(
+        msg
+      );
+    if (wantsFullRewrite) return extracted;
+
+    const seemsReplaceSection =
+      /substitu[ia]\s+.*se[çc][aã]o|REPLACE_SECTION|<!--\s*REPLACE_SECTION|troque\s+a\s+se[çc]|altere\s+a\s+se[çc][aã]o\s+exist|substitu[ia]\s+o\s+hero|substitu[ia]\s+a\s+hero/i.test(
+        msg
+      );
+
+    const addIntent =
+      /adicion|adicione|nova\s+se|inclua|incluir|mais\s+uma|crie\s+uma\s+se|uma\s+nova|outra\s+se|se[çc][aã]o\s+(nova|de|com|para)|coloque\s+uma|quero\s+uma\s+se|preciso\s+de\s+uma\s+se|bloco\s+de|área\s+de|append|\badd\s+(a|an)?\s*section|\bnew\s+section\b/i.test(
+        msg
+      );
+
+    if (seemsReplaceSection && !addIntent) return extracted;
+
+    const frag = document.createElement('div');
+    frag.innerHTML = extracted.html.trim();
+    const roots = Array.from(frag.children);
+
+    let sectionEl = null;
+    if (roots.length === 1 && roots[0].tagName.toLowerCase() === 'section') {
+      sectionEl = roots[0];
+    } else if (roots.length === 1 && roots[0].tagName.toLowerCase() === 'main') {
+      const secs = roots[0].querySelectorAll(':scope > section');
+      if (secs.length === 1) sectionEl = secs[0];
+    }
+
+    if (!sectionEl) {
+      const all = frag.querySelectorAll('section');
+      if (all.length === 1 && roots.length === 1) sectionEl = all[0];
+    }
+
+    if (!sectionEl || !addIntent) return extracted;
+
+    sectionEl.setAttribute('data-section-id', pageCtx.next_section_id);
+    return { type: 'append', html: sectionEl.outerHTML };
+  };
+
   const CHAT_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutos
 
   const onSendMessage = useCallback(async (userMessage) => {
@@ -446,7 +521,8 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
       const raw = data?.response || data?.content || '';
       const assistantMsg = { role: 'assistant', content: raw };
       setChatHistory((prev) => [...prev, assistantMsg]);
-      const extracted = extractHtmlFromChatResponse(raw);
+      let extracted = extractHtmlFromChatResponse(raw);
+      extracted = coerceFullToAppendIfNeeded(htmlContent, trimmed, extracted);
       if (extracted) {
         const newContent = applyExtractedHtml(htmlContent, extracted);
         setHtmlContent(newContent);
@@ -495,6 +571,31 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
     }
   }, [projectId, user, chatHistory, htmlContent, projectBrief, selectedLlmId, llmConnections, toast, buildSystemPrompt]);
 
+  const onRefineSection = useCallback(
+    async (sectionId, instruction) => {
+      const sectionHtml = getSectionOuterHtml(htmlContent, sectionId);
+      if (!sectionHtml) {
+        toast({ title: 'Seção não encontrada', description: 'Não foi possível localizar o HTML desta seção.', variant: 'destructive' });
+        return;
+      }
+      const msg = `[REFINAR APENAS A SEÇÃO ${sectionId}] Siga a instrução e devolva SOMENTE esta seção atualizada.
+
+Regras obrigatórias:
+- Responda com um único bloco \`\`\`html\`\`\`.
+- A primeira linha dentro do bloco deve ser exatamente: <!-- REPLACE_SECTION: ${sectionId} -->
+- Em seguida, o HTML completo de UMA tag <section>...</section> (mantenha data-section-id="${sectionId}").
+- Não envie a página inteira nem outras seções.
+
+Instrução do usuário:
+${instruction}
+
+HTML atual desta seção (referência):
+${sectionHtml}`;
+      await onSendMessage(msg);
+    },
+    [htmlContent, onSendMessage, toast]
+  );
+
   const saveTextEdit = useCallback((newText) => {
     if (!textEditElement) return;
     const { dataId } = textEditElement;
@@ -532,6 +633,20 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
   }, [textEditElement, textEditFont, toast]);
 
   const onImageSelect = (image) => {
+    if (sectionImageTarget) {
+      const { sectionId, dataId, isBackground } = sectionImageTarget;
+      const url = image?.signedUrl;
+      if (!url) {
+        toast({ title: 'Imagem inválida', variant: 'destructive' });
+        return;
+      }
+      setHtmlContent((prev) => applySectionImageSrc(prev, sectionId, dataId, url, isBackground));
+      setSectionImageTarget(null);
+      setIsImageBankOpen(false);
+      toast({ title: 'Imagem atualizada!' });
+      return;
+    }
+
     const currentSelectedElement = selectedElementRef.current;
     if (!currentSelectedElement || currentSelectedElement.type !== 'image') {
       toast({
@@ -650,46 +765,68 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
           <ResizableHandle withHandle />
           <ResizablePanel defaultSize={60} minSize={20} className="min-h-0 flex flex-col overflow-hidden">
             <div className="flex flex-col min-h-0 flex-1">
-              <div className="flex items-center gap-2 p-2 border-b shrink-0">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm">
-                      <ImagePlus className="h-4 w-4 mr-2" />
-                      Inserir imagem
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start">
-                    {(() => {
-                      const sectionIds = getPageContextFromHtml(htmlContent).section_ids;
-                      return sectionIds.length === 0 ? (
-                        <DropdownMenuItem disabled>Adicione seções ao site primeiro</DropdownMenuItem>
-                      ) : (
-                        sectionIds.map((sid) => (
-                          <DropdownMenuItem
-                            key={sid}
-                            onClick={() => {
-                              setInsertImageSectionId(sid);
-                              setIsImageBankOpen(true);
-                            }}
-                          >
-                            Inserir em {sid.replace('section_', 'Seção ')}
-                          </DropdownMenuItem>
-                        ))
-                      );
-                    })()}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <div className="flex-1 min-h-0 flex flex-col min-w-0 h-full min-h-[400px]">
-                <PreviewPanel
-                  htmlContent={htmlContent}
-                  setHtmlContent={setHtmlContent}
-                  selectedElement={selectedElement}
-                  setSelectedElement={setSelectedElement}
-                  onOpenImageBank={() => setIsImageBankOpen(true)}
-                  isBuilding={isSendingChat}
-                />
-              </div>
+              <Tabs defaultValue="preview" className="flex flex-col flex-1 min-h-0 gap-0">
+                <div className="flex items-center justify-between gap-2 px-2 pt-2 border-b shrink-0">
+                  <TabsList className="h-9">
+                    <TabsTrigger value="preview">Preview</TabsTrigger>
+                    <TabsTrigger value="sections">Seções</TabsTrigger>
+                  </TabsList>
+                </div>
+                <TabsContent value="preview" className="flex flex-col flex-1 min-h-0 mt-0 data-[state=inactive]:hidden">
+                  <div className="flex items-center gap-2 p-2 border-b shrink-0">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          <ImagePlus className="h-4 w-4 mr-2" />
+                          Inserir imagem
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        {(() => {
+                          const sectionIds = getPageContextFromHtml(htmlContent).section_ids;
+                          return sectionIds.length === 0 ? (
+                            <DropdownMenuItem disabled>Adicione seções ao site primeiro</DropdownMenuItem>
+                          ) : (
+                            sectionIds.map((sid) => (
+                              <DropdownMenuItem
+                                key={sid}
+                                onClick={() => {
+                                  setInsertImageSectionId(sid);
+                                  setIsImageBankOpen(true);
+                                }}
+                              >
+                                Inserir em {sid.replace('section_', 'Seção ')}
+                              </DropdownMenuItem>
+                            ))
+                          );
+                        })()}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <div className="flex-1 min-h-0 flex flex-col min-w-0 h-full min-h-[400px]">
+                    <PreviewPanel
+                      htmlContent={htmlContent}
+                      setHtmlContent={setHtmlContent}
+                      selectedElement={selectedElement}
+                      setSelectedElement={setSelectedElement}
+                      onOpenImageBank={() => setIsImageBankOpen(true)}
+                      isBuilding={isSendingChat}
+                    />
+                  </div>
+                </TabsContent>
+                <TabsContent value="sections" className="flex flex-col flex-1 min-h-0 mt-0 data-[state=inactive]:hidden overflow-hidden">
+                  <SiteSectionsPanel
+                    htmlContent={htmlContent}
+                    setHtmlContent={setHtmlContent}
+                    onRefineSection={onRefineSection}
+                    isRefining={isSendingChat}
+                    onPickImageFromBank={(target) => {
+                      setSectionImageTarget(target);
+                      setIsImageBankOpen(true);
+                    }}
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           </ResizablePanel>
         </ResizablePanelGroup>
@@ -700,6 +837,7 @@ Use as informações do CONTEXTO DO PROJETO (nome, nicho, cores, tom, público, 
           setIsImageBankOpen(false);
           setSelectedElement(null);
           setInsertImageSectionId(null);
+          setSectionImageTarget(null);
         }}
         projectId={projectId}
         onImageSelect={onImageSelect}
