@@ -158,9 +158,9 @@ const AgentNode = ({ id, data, isConnectable, selected }) => {
                     .eq('is_active', true);
 
                 if (!userError && userData) {
-                    // Filtrar apenas conexões com capacidade de geração de texto
+                    // Texto: incluir se capabilities ausente ou text_generation não for false
                     userConnections = userData
-                        .filter(conn => conn.capabilities?.text_generation === true)
+                        .filter(conn => conn.capabilities == null || conn.capabilities?.text_generation !== false)
                         .map(conn => ({
                             ...conn,
                             is_user_connection: true,

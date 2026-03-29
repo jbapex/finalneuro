@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+    import { Link } from 'react-router-dom';
     import { Handle, Position } from 'reactflow';
     import { Bot, Send, CheckCircle, Sparkles, PlusCircle, ChevronsUpDown, Settings } from 'lucide-react';
     import { Button } from '@/components/ui/button';
@@ -12,6 +13,13 @@ import React, { useState, useEffect, useRef } from 'react';
     import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
     import { useAuth } from '@/contexts/SupabaseAuthContext';
     import { getFriendlyErrorMessage } from '@/lib/utils';
+
+    /** Inclui conexão se não houver capabilities ou se texto não estiver explicitamente desativado. */
+    const isTextConnection = (conn) =>
+        conn.capabilities == null || conn.capabilities?.text_generation !== false;
+
+    const FLOW_CHAT_SYSTEM_PROMPT =
+        'Você está no Fluxo Criativo da plataforma. Use o contexto do fluxo (cliente, campanha, conhecimento ligados aos nós) para responder de forma objetiva e útil. Responda em português quando o utilizador escrever em português.';
 
     const fieldTranslations = {
         name: 'Nome',
@@ -37,15 +45,15 @@ import React, { useState, useEffect, useRef } from 'react';
         return (
             <Popover open={open} onOpenChange={setOpen}>
                 <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" aria-expanded={open} className="w-auto justify-between text-xs h-8" disabled={disabled}>
-                        <Settings className="w-3 h-3 mr-2" />
-                        <span className="truncate max-w-[150px]">
-                            {selectedIntegration ? selectedIntegration.name : "Selecione a IA"}
+                    <Button variant="outline" role="combobox" aria-expanded={open} className="w-full justify-between text-xs h-9 gap-1" disabled={disabled}>
+                        <Settings className="w-3 h-3 shrink-0" />
+                        <span className="truncate min-w-0 text-left flex-1">
+                            {selectedIntegration ? selectedIntegration.name : "Selecione a conexão de IA"}
                         </span>
-                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                <PopoverContent className="w-[var(--radix-popover-trigger-width)] min-w-[260px] max-w-[90vw] p-0" align="end">
                     <Command>
                         <CommandInput placeholder="Procurar conexão..." />
                         <CommandList>
@@ -74,7 +82,7 @@ import React, { useState, useEffect, useRef } from 'react';
 
     const ChatNode = ({ id, data, isConnectable }) => {
       const { onUpdateNodeData, inputData, onRefreshData } = data;
-      const { getLlmIntegrations, profile } = useAuth();
+      const { user, profile } = useAuth();
       const [messages, setMessages] = useState(data.messages || []);
       const [input, setInput] = useState('');
       const [isLoading, setIsLoading] = useState(false);
@@ -85,20 +93,77 @@ import React, { useState, useEffect, useRef } from 'react';
       const [selectedLlmId, setSelectedLlmId] = useState(data.llm_integration_id || null);
 
       useEffect(() => {
+        let cancelled = false;
         const fetchIntegrations = async () => {
-            if (!profile) return;
-            const integrations = await getLlmIntegrations();
-            setLlmIntegrations(integrations || []);
-            if (!selectedLlmId && integrations && integrations.length > 0) {
-                const defaultIntegration = integrations.find(i => i.name === 'Chat') || integrations[0];
-                if (defaultIntegration) {
-                    setSelectedLlmId(defaultIntegration.id);
-                    onUpdateNodeData(id, { llm_integration_id: defaultIntegration.id });
+            if (!user?.id || !profile) return;
+            try {
+                let userConnections = [];
+                const { data: userData, error: userError } = await supabase
+                    .from('user_ai_connections')
+                    .select('id, name, provider, default_model, capabilities, is_active')
+                    .eq('user_id', user.id)
+                    .eq('is_active', true);
+
+                if (!userError && userData) {
+                    userConnections = userData
+                        .filter(isTextConnection)
+                        .map((conn) => ({
+                            ...conn,
+                            is_user_connection: true,
+                            source: 'personal',
+                        }));
+                }
+
+                let integrations = userConnections;
+                if (integrations.length === 0) {
+                    const { data: globalData, error: globalError } = await supabase
+                        .from('llm_integrations')
+                        .select('id, name, provider, default_model, is_active');
+
+                    if (!globalError && globalData) {
+                        integrations = globalData
+                            .filter((i) => i.is_active !== false)
+                            .map((i) => ({
+                                ...i,
+                                is_user_connection: false,
+                                source: 'global',
+                            }));
+                    }
+                }
+
+                if (cancelled) return;
+                setLlmIntegrations(integrations || []);
+
+                const stored = data.llm_integration_id;
+                const stillValid = stored && integrations?.some((i) => String(i.id) === String(stored));
+                if (stillValid) {
+                    setSelectedLlmId(stored);
+                    return;
+                }
+                if (integrations && integrations.length > 0) {
+                    const defaultIntegration = integrations.find((i) => i.name === 'Chat') || integrations[0];
+                    if (defaultIntegration) {
+                        setSelectedLlmId(defaultIntegration.id);
+                        onUpdateNodeData(id, { llm_integration_id: defaultIntegration.id });
+                    }
+                }
+            } catch (e) {
+                if (!cancelled) {
+                    console.error('[ChatNode] conexões IA:', e);
+                    toast({
+                        title: 'Erro ao carregar conexões',
+                        description: e?.message || 'Não foi possível listar as conexões de IA.',
+                        variant: 'destructive',
+                    });
                 }
             }
         };
         fetchIntegrations();
-      }, [profile, getLlmIntegrations]);
+        return () => {
+            cancelled = true;
+        };
+        // onUpdateNodeData omitido (referência instável no canvas)
+      }, [user?.id, profile, id, data.llm_integration_id, toast]);
 
       const handleSelectLlm = (llmId) => {
         setSelectedLlmId(llmId);
@@ -240,12 +305,22 @@ import React, { useState, useEffect, useRef } from 'react';
             return null;
           }).filter(Boolean);
 
-          const { data: functionData, error } = await supabase.functions.invoke('flow-chat-assistant', {
+          const flowContextJson = JSON.stringify(inputData || {}, null, 2);
+          const apiMessages = [
+            {
+              role: 'system',
+              content: `${FLOW_CHAT_SYSTEM_PROMPT}\n\nContexto do fluxo (dados dos nós ligados):\n${flowContextJson}`,
+            },
+            ...messagesForApi,
+          ];
+
+          const selectedConn = llmIntegrations.find((i) => String(i.id) === String(selectedLlmId));
+
+          const { data: functionData, error } = await supabase.functions.invoke('generic-ai-chat', {
             body: JSON.stringify({
-              messages: messagesForApi,
-              flow_context: inputData || {},
+              messages: apiMessages,
               llm_integration_id: selectedLlmId,
-              is_user_connection: llmIntegrations.find(i => i.id === selectedLlmId)?.is_user_connection || false,
+              is_user_connection: selectedConn?.is_user_connection === true,
             }),
           });
 
@@ -320,19 +395,32 @@ import React, { useState, useEffect, useRef } from 'react';
             isConnectable={isConnectable}
             className="w-3 h-3 !bg-primary"
           />
-          <div className="p-4 bg-card-header rounded-t-lg flex items-center justify-between border-b flex-shrink-0">
-            <div className="flex items-center space-x-2">
-                <Bot className="h-6 w-6 text-primary" />
-                <div className="font-bold text-lg">{data.label}</div>
+          <div className="p-3 sm:p-4 bg-card-header rounded-t-lg border-b flex-shrink-0 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+                <Bot className="h-6 w-6 text-primary shrink-0" />
+                <div className="font-bold text-base sm:text-lg truncate">{data.label}</div>
             </div>
-            {!profile?.has_custom_ai_access && (
+            <div className="flex flex-col gap-1 w-full sm:w-[min(100%,320px)] sm:shrink-0">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">
+                Conexão de IA
+              </span>
+              {llmIntegrations.length > 0 ? (
                 <LlmIntegrationSelector
-                    integrations={llmIntegrations}
-                    selectedId={selectedLlmId}
-                    onSelect={handleSelectLlm}
-                    disabled={isLoading}
+                  integrations={llmIntegrations}
+                  selectedId={selectedLlmId}
+                  onSelect={handleSelectLlm}
+                  disabled={isLoading}
                 />
-            )}
+              ) : (
+                <p className="text-xs text-muted-foreground leading-snug">
+                  Nenhuma conexão ativa. Configure em{' '}
+                  <Link to="/settings/ai" className="text-primary underline font-medium">
+                    Minha IA
+                  </Link>
+                  .
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex-grow flex flex-col p-2 min-h-0">
             <div className="flex-grow flex flex-col border rounded-md min-h-0 overflow-hidden">

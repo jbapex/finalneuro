@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, forwardRef } from 'react';
 import ReactFlow, { Background, Controls, MiniMap } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -13,6 +13,7 @@ import ImageGeneratorNode from '@/components/flow-builder/nodes/ImageGeneratorNo
 import VideoTranscriberNode from '@/components/flow-builder/nodes/VideoTranscriberNode';
 import PageAnalyzerNode from '@/components/flow-builder/nodes/PageAnalyzerNode';
 import SiteCreatorNode from '@/components/flow-builder/nodes/SiteCreatorNode';
+import SitePreviewNode from '@/components/flow-builder/nodes/SitePreviewNode';
 import KnowledgeNode from '@/components/flow-builder/nodes/KnowledgeNode';
 import GeneratedImageNode from '@/components/flow-builder/nodes/GeneratedImageNode';
 import GeneratedContentNode from '@/components/flow-builder/nodes/GeneratedContentNode';
@@ -24,20 +25,24 @@ import StylesNode from '@/components/flow-builder/nodes/StylesNode';
 import SubjectNode from '@/components/flow-builder/nodes/SubjectNode';
 import CustomEdge from '@/components/flow-builder/edges/CustomEdge';
 
-const FlowCanvas = ({
-    nodes,
-    edges,
-    onNodesChange,
-    onEdgesChange,
-    onConnect,
-    updateNodeData,
-    removeNode,
-    onAddImageOutputNode,
+const FlowCanvas = forwardRef(function FlowCanvas(
+    {
+        nodes,
+        edges,
+        onNodesChange,
+        onEdgesChange,
+        onConnect,
+        updateNodeData,
+        removeNode,
+        onAddImageOutputNode,
     onAddAgentOutputNode,
+    onAddSitePreviewNode,
     onAddCarouselSlideImageNode,
-    getFreshInputData,
-    onRefreshData,
-}) => {
+        getFreshInputData,
+        onRefreshData,
+    },
+    ref
+) {
     const nodeTypes = useMemo(() => ({
         client: (props) => <ClientNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         context: (props) => <ContextNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
@@ -54,14 +59,29 @@ const FlowCanvas = ({
         carousel: (props) => <CarouselNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData, onAddCarouselSlideImageNode, getFreshInputData }} />,
         video_transcriber: (props) => <VideoTranscriberNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         page_analyzer: (props) => <PageAnalyzerNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
-        site_creator: (props) => <SiteCreatorNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
+        site_creator: (props) => (
+            <SiteCreatorNode
+                {...props}
+                data={{ ...props.data, onUpdateNodeData: updateNodeData, onAddSitePreviewNode }}
+            />
+        ),
+        site_preview: (props) => <SitePreviewNode {...props} data={{ ...props.data }} />,
         knowledge: (props) => <KnowledgeNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         reference_image: (props) => <ReferenceImageNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         image_logo: (props) => <ImageLogoNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         colors: (props) => <ColorsNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         styles: (props) => <StylesNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         subject: (props) => <SubjectNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
-    }), [updateNodeData, removeNode, onAddImageOutputNode, onAddAgentOutputNode, onAddCarouselSlideImageNode, getFreshInputData, onRefreshData]);
+    }), [
+        updateNodeData,
+        removeNode,
+        onAddImageOutputNode,
+        onAddAgentOutputNode,
+        onAddSitePreviewNode,
+        onAddCarouselSlideImageNode,
+        getFreshInputData,
+        onRefreshData,
+    ]);
 
     const edgeTypes = useMemo(() => ({
         custom: CustomEdge,
@@ -74,7 +94,7 @@ const FlowCanvas = ({
     };
 
     return (
-        <div className="flex-grow h-full w-full relative">
+        <div ref={ref} className="flex-grow h-full w-full relative">
             <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -94,6 +114,6 @@ const FlowCanvas = ({
             </ReactFlow>
         </div>
     );
-};
+});
 
 export default FlowCanvas;

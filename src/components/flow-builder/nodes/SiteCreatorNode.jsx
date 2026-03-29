@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, useRef } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,8 @@ const SiteCreatorNode = memo(({ id, data }) => {
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [jobId, setJobId] = useState(null);
   const [availableInputs, setAvailableInputs] = useState([]);
+  /** Evita duplicar nó de preview se o mesmo `completed` chegar mais de uma vez. */
+  const spawnedPreviewForProjectRef = useRef(null);
 
   useEffect(() => {
     const allNodes = getNodes();
@@ -58,6 +60,18 @@ const SiteCreatorNode = memo(({ id, data }) => {
               ...data,
               output: { id: updatedProject.id, data: updatedProject },
             });
+            const addPreview = data.onAddSitePreviewNode;
+            if (
+              typeof addPreview === 'function' &&
+              updatedProject.id &&
+              spawnedPreviewForProjectRef.current !== updatedProject.id
+            ) {
+              spawnedPreviewForProjectRef.current = updatedProject.id;
+              addPreview(id, {
+                projectId: updatedProject.id,
+                projectName: updatedProject.name || '',
+              });
+            }
             toast({ title: 'Seu site foi criado com sucesso!' });
             setIsLoading(false);
             setJobId(null);
@@ -83,6 +97,7 @@ const SiteCreatorNode = memo(({ id, data }) => {
       return;
     }
 
+    spawnedPreviewForProjectRef.current = null;
     setIsLoading(true);
     try {
       const { data: newProject, error } = await supabase

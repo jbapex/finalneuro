@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
     import { ReactFlowProvider } from 'reactflow';
     import { Helmet } from 'react-helmet';
     import {
@@ -20,6 +20,7 @@ import React from 'react';
     import FlowControls from '@/components/flow-builder/FlowControls';
     
     const FlowBuilderPageContent = () => {
+        const flowPaneRef = useRef(null);
         const flowData = useFlowData();
         const {
             nodes,
@@ -41,6 +42,7 @@ import React from 'react';
             addNode,
             addImageOutputNode,
             addAgentOutputNode,
+            addSitePreviewNode,
             addCarouselSlideImageNode,
             getFreshInputData,
             handleSaveFlow,
@@ -49,7 +51,7 @@ import React from 'react';
             handleDeleteFlow,
             confirmDeleteFlow,
             isLoadingFlow,
-        } = useFlowState(flowData);
+        } = useFlowState(flowData, flowPaneRef);
     
         const flowControlsProps = {
             onSave: () => handleSaveFlow(),
@@ -81,6 +83,7 @@ import React from 'react';
                             <ResizableHandle withHandle />
                             <ResizablePanel defaultSize={80}>
                                 <FlowCanvas
+                                    ref={flowPaneRef}
                                     nodes={nodes}
                                     edges={edges}
                                     onNodesChange={onNodesChange}
@@ -90,6 +93,7 @@ import React from 'react';
                                     removeNode={removeNode}
                                     onAddImageOutputNode={addImageOutputNode}
                                     onAddAgentOutputNode={addAgentOutputNode}
+                                    onAddSitePreviewNode={addSitePreviewNode}
                                     onAddCarouselSlideImageNode={addCarouselSlideImageNode}
                                     getFreshInputData={getFreshInputData}
                                     onRefreshData={flowData.fetchData}

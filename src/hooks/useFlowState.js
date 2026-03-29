@@ -120,7 +120,10 @@ const getNodeDefaults = (type, position, data) => {
     return baseNode;
 };
 
-export const useFlowState = (flowData) => {
+/**
+ * @param {import('react').RefObject<HTMLElement | null>} [flowPaneRef] — elemento que envolve o React Flow (para centrar novos nós na vista atual)
+ */
+export const useFlowState = (flowData, flowPaneRef) => {
     const { clients, campaigns, modules, plannings, analyses, presets, knowledgeSources, fetchData: refreshFlowData } = flowData;
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
@@ -132,7 +135,7 @@ export const useFlowState = (flowData) => {
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
     const [isLoadingFlow, setIsLoadingFlow] = useState(false);
 
-    const { setViewport, getViewport } = useReactFlow();
+    const { setViewport, getViewport, screenToFlowPosition } = useReactFlow();
     const { flowId } = useParams();
     const navigate = useNavigate();
     const { user, profile } = useAuth();
@@ -266,7 +269,22 @@ export const useFlowState = (flowData) => {
     }, [setNodes, setEdges, clients, campaigns, modules, plannings, analyses, presets, knowledgeSources]);
 
     const addNode = useCallback((type, label) => {
-        const position = { x: Math.random() * 400, y: Math.random() * 400 };
+        let position = { x: Math.random() * 400, y: Math.random() * 400 };
+        const pane = flowPaneRef?.current;
+        if (pane && typeof screenToFlowPosition === 'function') {
+            const r = pane.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+                const center = screenToFlowPosition({
+                    x: r.left + r.width / 2,
+                    y: r.top + r.height / 2,
+                });
+                // Pequeno desvio para vários cliques não empilharem no mesmo pixel; aproxima o “centro” visual do nó
+                position = {
+                    x: center.x - 160 + (Math.random() - 0.5) * 56,
+                    y: center.y - 120 + (Math.random() - 0.5) * 56,
+                };
+            }
+        }
         let nodeData = { label };
 
         switch (type) {
@@ -302,7 +320,18 @@ export const useFlowState = (flowData) => {
 
         const newNode = getNodeDefaults(type, position, nodeData);
         setNodes((nds) => nds.concat(newNode));
-    }, [setNodes, clients, campaigns, modules, plannings, analyses, presets, knowledgeSources]);
+    }, [
+        setNodes,
+        clients,
+        campaigns,
+        modules,
+        plannings,
+        analyses,
+        presets,
+        knowledgeSources,
+        flowPaneRef,
+        screenToFlowPosition,
+    ]);
 
     const addImageOutputNode = useCallback((sourceNodeId, imageUrl, imageData = {}) => {
         setNodes((nds) => {
@@ -336,6 +365,28 @@ export const useFlowState = (flowData) => {
                 label: newNode.data.label || 'Conteúdo gerado',
                 output: { id: newId, data: generatedText, moduleName: outputData.moduleName },
             };
+            queueMicrotask(() => {
+                setEdges((eds) => addEdge({ source: sourceNodeId, target: newId, animated: true }, eds));
+            });
+            return nds.concat(newNode);
+        });
+    }, [setNodes, setEdges]);
+
+    const addSitePreviewNode = useCallback((sourceNodeId, { projectId, projectName } = {}) => {
+        if (!projectId) return;
+        setNodes((nds) => {
+            const source = nds.find((n) => n.id === sourceNodeId);
+            if (!source) return nds;
+            const position = { x: (source.position?.x ?? 0) + 340, y: source.position?.y ?? 0 };
+            const newId = `site_preview-${uuidv4()}`;
+            const safeName = typeof projectName === 'string' && projectName.trim() ? projectName.trim() : 'Site';
+            const newNode = getNodeDefaults('site_preview', position, {
+                label: `Preview: ${safeName}`,
+                projectId,
+                projectName: safeName,
+                sourceSiteCreatorNodeId: sourceNodeId,
+            });
+            newNode.id = newId;
             queueMicrotask(() => {
                 setEdges((eds) => addEdge({ source: sourceNodeId, target: newId, animated: true }, eds));
             });
@@ -512,6 +563,7 @@ export const useFlowState = (flowData) => {
         addNode,
         addImageOutputNode,
         addAgentOutputNode,
+        addSitePreviewNode,
         addCarouselSlideImageNode,
         getFreshInputData,
         handleSaveFlow,

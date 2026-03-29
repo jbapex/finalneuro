@@ -1,109 +1,38 @@
 import React, { useMemo } from 'react';
+import { applyModuleColors } from '@/lib/applyModuleColors';
 import NeuralNetworkCanvas from '@/components/ui/NeuralNetworkCanvas';
-import {
-  escapeHtmlForIframe,
-  buildSiteHtmlDocument,
-  buildInnerHtmlFromPageStructure,
-} from '@/lib/siteBuilderDocument';
+
+const IFRAME_BODY_STYLE = [
+  'html, body { margin: 0; font-family: sans-serif; background: #fff; overflow-x: auto; overflow-y: auto; min-height: 100%; }',
+  '#root { min-width: min-content; }',
+].join(' ');
+
+/** Google Fonts variadas para tipografia personalizada (evitar look genérico). */
+const GOOGLE_FONTS_LINK =
+  '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&family=DM+Serif+Display&family=Space+Grotesk:wght@400;500;600;700&family=Lora:ital,wght@0,400;0,600;0,700&family=Manrope:wght@400;500;600;700&display=swap">';
+
+/** Escapa conteúdo para injeção no documento do iframe (evita quebrar </script>, </body>, </html>). */
+function escapeHtmlForIframe(html) {
+  if (html == null || typeof html !== 'string') return '';
+  return html
+    .replace(/<\/script>/gi, '<\\/script>')
+    .replace(/<\/body>/gi, '<\\/body>')
+    .replace(/<\/html>/gi, '<\\/html>');
+}
 
 /** Script injetado no iframe: envia postMessage ao pai em cliques em elementos com data-id. */
 const PREVIEW_CLICK_SCRIPT = `
 (function(){
-  function closestAnchor(el) {
-    while (el && el !== document.body) {
-      if (el.tagName === 'A' && el.hasAttribute('href')) return el;
-      el = el.parentElement;
-    }
-    return null;
-  }
-  /** Links reais (#secao, https://…, mailto:, relativos) — não bloquear para validar navegação no iframe. */
-  function linkShouldNavigate(a) {
-    var href = (a.getAttribute('href') || '').trim();
-    if (!href) return false;
-    var h = href.toLowerCase();
-    if (h === '#') return false;
-    if (h.indexOf('javascript:') === 0) return false;
-    return true;
-  }
-  function closestSectionId(el) {
-    var n = el;
-    while (n && n !== document.body) {
-      if (n.getAttribute && n.getAttribute('data-section-id')) return n.getAttribute('data-section-id');
-      n = n.parentElement;
-    }
-    return '';
-  }
-  function isVideoEmbedIframe(ifr) {
-    var s = (ifr.getAttribute('src') || '').toLowerCase();
-    if (!s) return false;
-    if (s.indexOf('player.vimeo.com') >= 0) return true;
-    if (s.indexOf('youtu.be/') >= 0) return true;
-    if (s.indexOf('youtube.com/') >= 0 || s.indexOf('youtube-nocookie.com/') >= 0) return true;
-    if (s.indexOf('vimeo.com/') >= 0 && /\\/\\d{5,}/.test(s)) return true;
-    return false;
-  }
   document.addEventListener('click', function(e) {
-    var navA = closestAnchor(e.target);
-    if (navA && linkShouldNavigate(navA)) {
-      return;
-    }
-    // Vídeo / embed: clique no <video>, no iframe YouTube/Vimeo ou no wrapper data-type="video"
-    var mediaEl = null;
-    var t = e.target;
-    while (t && t !== document.body) {
-      if (t.tagName === 'VIDEO') { mediaEl = t; break; }
-      if (t.tagName === 'IFRAME' && isVideoEmbedIframe(t)) { mediaEl = t; break; }
-      t = t.parentElement;
-    }
-    if (!mediaEl) {
-      var wrapV = e.target.closest('[data-type="video"]');
-      if (wrapV) mediaEl = wrapV.querySelector('video, iframe');
-    }
-    if (mediaEl) {
-      var dataId = mediaEl.getAttribute('data-id') || '';
-      if (!dataId) {
-        var w2 = mediaEl.closest('[data-type="video"][data-id]');
-        if (w2) dataId = w2.getAttribute('data-id') || '';
-      }
-      if (!dataId) {
-        var p = mediaEl.parentElement;
-        while (p && p !== document.body) {
-          if (p.getAttribute('data-id')) { dataId = p.getAttribute('data-id'); break; }
-          p = p.parentElement;
-        }
-      }
-      if (dataId) {
-        var vsrc = '';
-        var poster = '';
-        if (mediaEl.tagName === 'VIDEO') {
-          vsrc = mediaEl.currentSrc || mediaEl.src || '';
-          if (!vsrc && mediaEl.querySelector('source')) vsrc = mediaEl.querySelector('source').getAttribute('src') || '';
-          poster = mediaEl.getAttribute('poster') || '';
-        } else {
-          vsrc = mediaEl.getAttribute('src') || '';
-        }
-        window.parent.postMessage({
-          type: 'site-preview-click',
-          dataId: dataId,
-          dataType: 'video',
-          tagName: mediaEl.tagName,
-          videoKind: mediaEl.tagName === 'VIDEO' ? 'video' : 'iframe',
-          src: vsrc,
-          poster: poster,
-          sectionId: closestSectionId(mediaEl),
-          textContent: ''
-        }, '*');
-        return;
-      }
-    }
-
     var el = e.target;
+    
     // Se clicou em uma div que tem background-image
     if (el.tagName === 'DIV') {
       var style = window.getComputedStyle(el);
       if (style.backgroundImage && style.backgroundImage !== 'none') {
         var id = el.getAttribute('data-id');
         if (id) {
+          // Extrai a URL do background-image (ex: url("https://...") -> https://...)
           var bgUrl = style.backgroundImage.replace(/^url\\(['"]?/, '').replace(/['"]?\\)$/, '');
           window.parent.postMessage({
             type: 'site-preview-click',
@@ -124,7 +53,7 @@ const PREVIEW_CLICK_SCRIPT = `
     while (el && el !== document.body) {
       var id = el.getAttribute('data-id');
       if (id) {
-        var type = (el.getAttribute('data-type') || '').toLowerCase();
+        var type = el.getAttribute('data-type') || '';
         if (el.tagName === 'IMG') type = 'image';
         else if (!type) type = 'text';
         window.parent.postMessage({
@@ -145,6 +74,35 @@ const PREVIEW_CLICK_SCRIPT = `
 })();
 `;
 
+/**
+ * Monta o HTML completo para o iframe a partir de pageStructure (módulos),
+ * aplicando backgroundColor e textColor de cada módulo no elemento raiz.
+ */
+function buildHtmlFromPageStructure(pageStructure) {
+  if (!pageStructure || !Array.isArray(pageStructure) || pageStructure.length === 0) {
+    return '';
+  }
+  const parts = pageStructure.map((module) =>
+    applyModuleColors(
+      module.html || '',
+      module.backgroundColor,
+      module.textColor
+    )
+  );
+  const combinedHtml = escapeHtmlForIframe(parts.join('\n'));
+  return [
+    '<!DOCTYPE html>',
+    '<html lang="pt-BR">',
+    '<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    GOOGLE_FONTS_LINK,
+    '<script src="https://cdn.tailwindcss.com"></script>',
+    '<style>' + IFRAME_BODY_STYLE + '</style>',
+    '</head><body><div id="root">',
+    combinedHtml,
+    '</div><script>' + PREVIEW_CLICK_SCRIPT + '<\\/script></body></html>',
+  ].join('');
+}
+
 const PreviewPanel = ({
   pageStructure,
   setPageStructure,
@@ -158,20 +116,24 @@ const PreviewPanel = ({
 }) => {
   const fullHtml = useMemo(() => {
     if (pageStructure && pageStructure.length > 0) {
-      const inner = buildInnerHtmlFromPageStructure(pageStructure);
-      if (!inner) return '';
-      return buildSiteHtmlDocument({
-        rootInnerHtml: inner,
-        editorScript: PREVIEW_CLICK_SCRIPT,
-      });
+      return buildHtmlFromPageStructure(pageStructure);
     }
     const safeContent = escapeHtmlForIframe(htmlContent || '');
     const hasContent = safeContent.trim().length > 0;
-    const rootContent = hasContent ? safeContent : '';
-    return buildSiteHtmlDocument({
-      rootInnerHtml: rootContent,
-      editorScript: PREVIEW_CLICK_SCRIPT,
-    });
+    const rootContent = hasContent
+      ? safeContent
+      : '';
+    return [
+      '<!DOCTYPE html>',
+      '<html lang="pt-BR">',
+      '<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">',
+      GOOGLE_FONTS_LINK,
+      '<script src="https://cdn.tailwindcss.com"></script>',
+      '<style>' + IFRAME_BODY_STYLE + '</style>',
+      '</head><body><div id="root">',
+      rootContent,
+      '</div><script>' + PREVIEW_CLICK_SCRIPT + '<\\/script></body></html>',
+    ].join('');
   }, [pageStructure, htmlContent]);
 
   const hasContent = useMemo(() => {
@@ -202,8 +164,7 @@ const PreviewPanel = ({
         srcDoc={fullHtml}
         title="Preview do site"
         className="w-full h-full min-h-[400px] border-0"
-        sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-presentation"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        sandbox="allow-scripts allow-same-origin"
       />
     </div>
   );

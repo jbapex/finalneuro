@@ -4,7 +4,7 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { Helmet } from 'react-helmet';
-import { Loader2, ArrowLeft, ImagePlus, Download } from 'lucide-react';
+import { Loader2, ArrowLeft, ImagePlus } from 'lucide-react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,13 +30,7 @@ import PreviewPanel from '@/components/site-builder/PreviewPanel';
 import SiteSectionsPanel from '@/components/site-builder/SiteSectionsPanel';
 import ImageBankModal from '@/components/site-builder/ImageBankModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  applySectionImageSrc,
-  getSectionOuterHtml,
-  applySectionVideoUpdates,
-  findSectionIdForDataId,
-} from '@/lib/siteBuilderSections';
-import { buildDeployableSiteHtml, triggerDownloadTextFile } from '@/lib/siteBuilderDocument';
+import { applySectionImageSrc, getSectionOuterHtml } from '@/lib/siteBuilderSections';
 import { getDefaultAiConnection } from '@/lib/userAiDefaults';
 
 const DEFAULT_HTML_TEMPLATE = `
@@ -75,8 +69,6 @@ const SiteBuilder = () => {
   const [isBuilding, setIsBuilding] = useState(false);
   const [isImageBankOpen, setIsImageBankOpen] = useState(false);
   const [textEditElement, setTextEditElement] = useState(null); // { dataId, dataType, textContent } para popover de edição
-  /** Edição rápida de vídeo/embed após clique no preview. */
-  const [videoEditElement, setVideoEditElement] = useState(null); // { sectionId, dataId, src, poster, videoKind }
   const [textEditValue, setTextEditValue] = useState('');
   const [textEditFont, setTextEditFont] = useState(''); // font-family para o elemento em edição ('' = herdar)
   const [insertImageSectionId, setInsertImageSectionId] = useState(null); // sectionId quando abrir ImageBank em modo "inserir"
@@ -99,28 +91,6 @@ const SiteBuilder = () => {
     { value: 'Inter, sans-serif', label: 'Inter' },
     { value: '"Playfair Display", serif', label: 'Playfair Display' },
   ];
-
-  const handleDownloadForHosting = useCallback(() => {
-    const doc = buildDeployableSiteHtml({
-      htmlContent,
-      pageStructure: null,
-      title: project?.name || 'Site',
-    });
-    if (!doc) {
-      toast({
-        title: 'Nada para exportar',
-        description: 'Gere ou carregue o HTML do site antes de baixar.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    triggerDownloadTextFile(doc, 'index.html');
-    toast({
-      title: 'index.html gerado',
-      description:
-        'Na Hostinger ou Hostgator: envie este ficheiro para public_html (ou www) como index.html — FTP, SFTP ou Gestor de ficheiros. Domínio apontado para essa pasta passa a mostrar o site.',
-    });
-  }, [htmlContent, project?.name, toast]);
 
   const handleSaveProject = useCallback(async () => {
     if (!projectId || !user) return;
@@ -263,14 +233,6 @@ const SiteBuilder = () => {
       });
       if (dataType === 'image') {
         // Removido setIsImageBankOpen(true) para abrir o dialog de edição de imagem primeiro
-      } else if (dataType === 'video' && d.dataId) {
-        setVideoEditElement({
-          sectionId: d.sectionId || '',
-          dataId: d.dataId,
-          src: d.src != null ? String(d.src) : '',
-          poster: d.poster != null ? String(d.poster) : '',
-          videoKind: d.videoKind === 'iframe' ? 'iframe' : 'video',
-        });
       } else if (['heading', 'text', 'button'].includes(dataType)) {
         const initial = d.textContent != null ? String(d.textContent) : '';
         setTextEditElement({
@@ -306,11 +268,6 @@ DESIGN OBRIGATÓRIO (NÃO IGNORAR):
 - NUNCA use o clichê "degradê azul e roxo" (evite from-blue-500 to-purple-600, from-indigo to-purple, etc.). Cada site deve ter paleta própria, coerente com o nicho e o brief.
 - Tipografia personalizada: use fontes distintas por projeto. Você PODE usar apenas estas famílias (já carregadas no preview): "Inter", "Playfair Display", "Plus Jakarta Sans", "Outfit", "DM Serif Display", "Space Grotesk", "Lora", "Manrope". Escolha uma combinação (ex.: títulos em DM Serif Display, corpo em Plus Jakarta Sans) que combine com o tom do site. Aplique via style="font-family: 'Nome da Fonte', fallback;" ou classes Tailwind quando fizer sentido.
 - Imagens em lugares estratégicos: em hero, features ou depoimentos, inclua <img> com data-id e data-type="image", src com placeholder (ex.: https://placehold.co/800x500 ou similar), alt descritivo. O usuário troca a imagem depois; deixe o layout pronto para impacto visual.
-- Vídeos: você PODE e DEVE usar vídeo quando fizer sentido (hero, demonstração, depoimento em vídeo).
-  • Vídeo hospedado (MP4/WebM): use <video data-id="..." data-type="video" controls playsinline class="w-full max-w-4xl rounded-lg" poster="URL_IMAGEM_CAPA_OPCIONAL"><source src="URL_DO_VIDEO.mp4" type="video/mp4" /></video> (src também pode ir direto no <video src="...">).
-  • YouTube: iframe com data-id no próprio iframe OU num wrapper <div data-type="video" data-id="unico"> em volta. Prefira src https://www.youtube.com/embed/VIDEO_ID; links watch?v= / youtu.be também funcionam após o usuário aplicar em Seções → Vídeos. class="w-full aspect-video max-w-4xl rounded-lg border-0", allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share", allowfullscreen.
-  • Vimeo: https://player.vimeo.com/video/ID ou link vimeo.com/NUMERO — normalizável no editor.
-  Sempre um data-id único por vídeo/embed (no elemento ou no wrapper data-type="video") para edição em Seções → Vídeos.
 - Elementos bem desenhados: botões com bordas definidas, hierarquia clara (tamanhos de texto, espaçamento), cards com sombra/borda sutil, CTAs que se destacam. Evite blocos sem estrutura.
 - Layout responsivo (mobile-first), semântico (header, main, section, footer, nav), um único h1 por página. Todo elemento editável (títulos, parágrafos, botões) deve ter data-id único e data-type="heading"|"text"|"button" conforme o caso.
 
@@ -675,39 +632,6 @@ ${sectionHtml}`;
     toast({ title: 'Texto atualizado!' });
   }, [textEditElement, textEditFont, toast]);
 
-  const saveVideoEdit = useCallback(() => {
-    if (!videoEditElement?.dataId) {
-      setVideoEditElement(null);
-      return;
-    }
-    let sid = (videoEditElement.sectionId || '').trim();
-    if (!sid) {
-      sid = findSectionIdForDataId(htmlContent, videoEditElement.dataId);
-    }
-    if (!sid) {
-      toast({
-        title: 'Não foi possível localizar a seção',
-        description: 'Use o separador Seções → Vídeos para editar o URL.',
-        variant: 'destructive',
-      });
-      setVideoEditElement(null);
-      setSelectedElement(null);
-      return;
-    }
-    setHtmlContent((prev) =>
-      applySectionVideoUpdates(prev, sid, [
-        {
-          dataId: videoEditElement.dataId,
-          src: videoEditElement.src,
-          poster: videoEditElement.videoKind === 'video' ? videoEditElement.poster : undefined,
-        },
-      ])
-    );
-    setVideoEditElement(null);
-    setSelectedElement(null);
-    toast({ title: 'Vídeo atualizado!' });
-  }, [videoEditElement, htmlContent, toast]);
-
   const onImageSelect = (image) => {
     if (sectionImageTarget) {
       const { sectionId, dataId, isBackground } = sectionImageTarget;
@@ -817,11 +741,7 @@ ${sectionHtml}`;
           <Button variant="ghost" size="icon" onClick={() => navigate('/ferramentas/criador-de-site')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">{project.name}</h1>
-          <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={handleDownloadForHosting}>
-            <Download className="h-4 w-4 mr-2" />
-            Para hospedagem
-          </Button>
+          <h1 className="text-lg font-semibold">{project.name}</h1>
         </header>
         <ResizablePanelGroup direction="horizontal" className="flex-grow min-h-0 overflow-hidden">
           <ResizablePanel defaultSize={40} minSize={20} className="min-h-0">
@@ -957,67 +877,6 @@ ${sectionHtml}`;
               Cancelar
             </Button>
             <Button onClick={() => saveTextEdit(textEditValue)}>Salvar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={!!videoEditElement}
-        onOpenChange={(open) => {
-          if (!open) {
-            setVideoEditElement(null);
-            setSelectedElement(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>{videoEditElement?.videoKind === 'iframe' ? 'Editar embed (YouTube / Vimeo)' : 'Editar vídeo'}</DialogTitle>
-          </DialogHeader>
-          <p className="text-xs text-muted-foreground">
-            {videoEditElement?.videoKind === 'iframe'
-              ? 'Cole o URL completo do iframe (ex.: https://www.youtube.com/embed/… ou https://player.vimeo.com/video/…).'
-              : 'URL do ficheiro de vídeo (MP4, WebM). Opcional: imagem de capa (poster).'}
-          </p>
-          <div className="space-y-3 py-2">
-            <div className="space-y-1">
-              <Label>{videoEditElement?.videoKind === 'iframe' ? 'URL do embed' : 'URL do vídeo'}</Label>
-              <Input
-                value={videoEditElement?.src || ''}
-                onChange={(e) =>
-                  setVideoEditElement((v) => (v ? { ...v, src: e.target.value } : null))
-                }
-                placeholder={
-                  videoEditElement?.videoKind === 'iframe'
-                    ? 'https://www.youtube.com/embed/...'
-                    : 'https://.../video.mp4'
-                }
-              />
-            </div>
-            {videoEditElement?.videoKind === 'video' ? (
-              <div className="space-y-1">
-                <Label>Poster (URL da capa, opcional)</Label>
-                <Input
-                  value={videoEditElement?.poster || ''}
-                  onChange={(e) =>
-                    setVideoEditElement((v) => (v ? { ...v, poster: e.target.value } : null))
-                  }
-                  placeholder="https://.../capa.jpg"
-                />
-              </div>
-            ) : null}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setVideoEditElement(null);
-                setSelectedElement(null);
-              }}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={saveVideoEdit}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
