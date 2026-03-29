@@ -173,6 +173,22 @@ const PlanFormDialog = ({
                     />
                 </div>
                 <div>
+                    <Label htmlFor="creative_flow_limit">Máx. Fluxos Criativos por Usuário</Label>
+                    <Input
+                        id="creative_flow_limit"
+                        type="number"
+                        value={formData.plan_image_generation_config.creative_flow_limit ?? 3}
+                        onChange={(e) => setFormData(prev => ({
+                            ...prev,
+                            plan_image_generation_config: {
+                              ...prev.plan_image_generation_config,
+                              creative_flow_limit: Math.max(1, parseInt(e.target.value || '3', 10))
+                            }
+                        }))}
+                        min="1"
+                    />
+                </div>
+                <div>
                     <Label htmlFor="cost_markup_percentage">Markup de Custo (%)</Label>
                     <Input
                         id="cost_markup_percentage"

@@ -37,6 +37,7 @@ import React from 'react';
             onEdgesChange,
             onConnect,
             updateNodeData,
+            removeNode,
             addNode,
             addImageOutputNode,
             addAgentOutputNode,
@@ -47,6 +48,7 @@ import React from 'react';
             handleFlowSelect,
             handleDeleteFlow,
             confirmDeleteFlow,
+            isLoadingFlow,
         } = useFlowState(flowData);
     
         const flowControlsProps = {
@@ -56,7 +58,8 @@ import React from 'react';
             flows,
             onFlowSelect: handleFlowSelect,
             activeFlow,
-            isLoading: flowData.isLoading,
+            isReferenceLoading: flowData.isLoading,
+            isLoadingFlow,
             isSaving,
         };
     
@@ -70,9 +73,9 @@ import React from 'react';
                     <header className="flex-shrink-0">
                         <FlowControls {...flowControlsProps} />
                     </header>
-                    <div className="flex-grow">
+                    <div className="flex-grow min-h-0">
                         <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-                            <ResizablePanel defaultSize={20} minSize={15} maxSize={25}>
+                            <ResizablePanel defaultSize={20} minSize={15} maxSize={25} className="h-full overflow-y-auto">
                                 <NodeToolbar addNode={addNode} isLoadingData={flowData.isLoading} />
                             </ResizablePanel>
                             <ResizableHandle withHandle />
@@ -84,6 +87,7 @@ import React from 'react';
                                     onEdgesChange={onEdgesChange}
                                     onConnect={onConnect}
                                     updateNodeData={updateNodeData}
+                                    removeNode={removeNode}
                                     onAddImageOutputNode={addImageOutputNode}
                                     onAddAgentOutputNode={addAgentOutputNode}
                                     onAddCarouselSlideImageNode={addCarouselSlideImageNode}

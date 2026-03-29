@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import RefineImageForm from '@/components/neurodesign/RefineImageForm';
+import { getImageExpiryMeta } from '@/lib/neurodesign/imageExpiry';
 
 const isDemoPlaceholder = (url) => url && typeof url === 'string' && url.includes('placehold.co');
 
@@ -133,12 +134,37 @@ const NeuralNetworkCanvas = ({ isActive }) => {
   return <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />;
 };
 
-const PreviewPanel = ({ project, user, selectedImage, images, isGenerating, isRefining, onRefine, onDownload, onSelectImage, hasImageConnection = true }) => {
+const PreviewPanel = ({
+  project,
+  user,
+  selectedImage,
+  images,
+  isGenerating,
+  isRefining,
+  onRefine,
+  onDownload,
+  onSelectImage,
+  hasImageConnection = true,
+  imageConnections = [],
+  refineConnectionSelectValue,
+  onRefineConnectionChange,
+  builderInheritHint,
+  emptyStateTitle = 'Aguardando criação',
+  emptyStateDescription = 'Configure o builder à esquerda e clique em "Gerar Imagem" para iniciar a rede neural.',
+}) => {
   const [fullscreenOpen, setFullscreenOpen] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+
+  // Timer para contador de retenção (~1h, alinhado às Edge Functions).
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const imageUrl = selectedImage?.url || selectedImage?.thumbnail_url;
   const isLoading = isGenerating || isRefining;
   const showDemoNotice = !isLoading && imageUrl && isDemoPlaceholder(imageUrl);
+  const mainPreviewExpiryMeta = getImageExpiryMeta(selectedImage?.created_at, now);
 
   return (
     <div className="flex flex-col h-full p-4 sm:p-6 min-h-0 max-w-[900px] xl:max-w-[1000px] mx-auto w-full">
@@ -167,8 +193,8 @@ const PreviewPanel = ({ project, user, selectedImage, images, isGenerating, isRe
               <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 via-primary/5 to-transparent rounded-full animate-pulse blur-2xl pointer-events-none" style={{ animationDuration: '4s' }}></div>
             </div>
             <div className="space-y-1 mt-4 relative z-10 bg-background/50 backdrop-blur-sm p-4 rounded-xl border border-border/50">
-              <p className="font-medium text-lg text-foreground">Aguardando criação</p>
-              <p className="text-sm text-muted-foreground max-w-xs mx-auto">Configure o builder à esquerda e clique em &quot;Gerar Imagem&quot; para iniciar a rede neural.</p>
+              <p className="font-medium text-lg text-foreground">{emptyStateTitle}</p>
+              <p className="text-sm text-muted-foreground max-w-xs mx-auto">{emptyStateDescription}</p>
             </div>
           </div>
         )}
@@ -181,6 +207,11 @@ const PreviewPanel = ({ project, user, selectedImage, images, isGenerating, isRe
               onRefine={onRefine}
               disabled={isRefining}
               hasImageConnection={hasImageConnection}
+              imageConnections={imageConnections}
+              refineConnectionSelectValue={refineConnectionSelectValue}
+              onRefineConnectionChange={onRefineConnectionChange}
+              builderInheritHint={builderInheritHint}
+              previewExpiryMeta={mainPreviewExpiryMeta}
               renderPreviewActions={() => (
                 <>
                   <Button size="sm" variant="secondary" onClick={() => setFullscreenOpen(true)}>
@@ -209,6 +240,7 @@ const PreviewPanel = ({ project, user, selectedImage, images, isGenerating, isRe
             {images.slice(0, 5).map((img) => {
               const url = img.url || img.thumbnail_url;
               const isSelected = selectedImage?.id === img.id;
+              const expiryMeta = getImageExpiryMeta(img.created_at, now);
               return (
                 <div
                   key={img.id}
@@ -223,6 +255,21 @@ const PreviewPanel = ({ project, user, selectedImage, images, isGenerating, isRe
                     onClick={() => onSelectImage?.(img)}
                   >
                     <img src={url} alt="" className="w-full h-full object-cover" />
+                    {expiryMeta && (
+                      <div className="absolute bottom-1 left-1 right-1 pointer-events-none flex justify-center">
+                        <span
+                          className={cn(
+                            'text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shadow-sm max-w-full truncate',
+                            expiryMeta.isSoon
+                              ? 'bg-red-500/15 text-red-700 border-red-500/35 dark:text-red-300'
+                              : 'bg-background/80 text-foreground border-border/60'
+                          )}
+                          title={expiryMeta.isExpired ? 'Expirado' : `Expira em ~${expiryMeta.text}`}
+                        >
+                          {expiryMeta.isExpired ? 'Expirado' : `-${expiryMeta.text}`}
+                        </span>
+                      </div>
+                    )}
                     <div className="absolute inset-0 opacity-0 hover:opacity-100 transition-opacity bg-foreground/40 flex items-center justify-center">
                       <Button
                         size="icon"

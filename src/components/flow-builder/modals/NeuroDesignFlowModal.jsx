@@ -13,6 +13,7 @@ import { X } from 'lucide-react';
 import BuilderPanel from '@/components/neurodesign/BuilderPanel';
 import PreviewPanel from '@/components/neurodesign/PreviewPanel';
 import { mergeFlowInputDataIntoConfig } from '@/lib/neurodesign/flowConfigMerge';
+import { useNeurodesignExpiredCleanup } from '@/hooks/useNeurodesignExpiredCleanup';
 
 function buildFlowContextText(inputData) {
   if (!inputData || typeof inputData !== 'object') return '';
@@ -45,13 +46,14 @@ function buildFlowContextText(inputData) {
 }
 
 const NEURODESIGN_FILL_ALLOWED_KEYS = new Set([
-  'subject_gender', 'subject_description', 'niche_project', 'environment',
+  'subject_enabled', 'subject_mode', 'subject_gender', 'subject_description', 'quantity', 'niche_project', 'environment',
   'shot_type', 'layout_position', 'dimensions', 'image_size', 'text_enabled', 'text_mode', 'custom_text', 'custom_text_font_description', 'use_reference_image_text', 'headline_h1',
   'subheadline_h2', 'cta_button_text', 'text_position', 'text_gradient',
   'visual_attributes', 'ambient_color', 'rim_light_color', 'fill_light_color',
   'floating_elements_enabled', 'floating_elements_text', 'additional_prompt',
 ]);
 const NEURODESIGN_FILL_ENUMS = {
+  subject_mode: ['person', 'product'],
   subject_gender: ['masculino', 'feminino'],
   shot_type: ['close-up', 'medio busto', 'americano'],
   layout_position: ['esquerda', 'centro', 'direita'],
@@ -118,6 +120,13 @@ const NeuroDesignFlowModal = ({ open, onOpenChange, inputData, onResult, embedde
 
   const isVisible = embedded ? true : open;
   const inputDataSnapshot = useMemo(() => (isVisible && inputData ? { ...inputData } : null), [isVisible, inputData]);
+
+  useNeurodesignExpiredCleanup({
+    enabled: Boolean(user?.id && isVisible),
+    images,
+    setImages,
+    setSelectedImage,
+  });
   const flowContextText = useMemo(() => buildFlowContextText(inputDataSnapshot), [inputDataSnapshot]);
 
   const getOrCreateProject = useCallback(async () => {
@@ -385,6 +394,10 @@ Mapeamento de termos comuns:
 - Formato: "feed" ou "quadrado" -> dimensions "1:1"; "stories" ou "vertical" -> "9:16"; "horizontal" ou "banner" -> "16:9"; "4:5" ou "retrato feed" -> "4:5"
 - Plano: "close" ou "rosto" -> shot_type "close-up"; "médio" ou "busto" -> "medio busto"; "americano" ou "corpo inteiro" -> "americano"
 - Qualidade: "alta" ou "2k" ou "alta resolução" -> image_size "2K"; "máxima" ou "4k" -> "4K"; caso contrário use "1K"
+ESTÉTICA PROFISSIONAL (brief de social/ads, agência, posicionamento, "não parecer IA"):
+- Defina ultra_realistic: true e sobriety entre 75 e 95.
+- Retrato com fundo contextual: blur_enabled: true quando fizer sentido.
+- Em additional_prompt preserve em português luz (rim, low-key, chiaroscuro), textura, colagem, glass, 3D fotorreal, composição e anti-padrões de IA genérica — a geração usa esse campo.
 Chaves e valores exatos obrigatórios (use exatamente assim no JSON):
 - subject_gender: "masculino" ou "feminino"
 - subject_description: string (pose, roupa, expressão)
@@ -401,9 +414,10 @@ Chaves e valores exatos obrigatórios (use exatamente assim no JSON):
 - use_reference_image_text: boolean; true se o brief indicar que o texto deve ser copiado/extraído da imagem de referência.
 - text_position: "esquerda" ou "centro" ou "direita"
 - visual_attributes: objeto com style_tags (array só com: clássico, formal, elegante, institucional, tecnológico, minimalista, criativo), sobriety (número 0-100), ultra_realistic, blur_enabled, lateral_gradient_enabled (boolean)
-- additional_prompt: string com instruções extras para a IA de imagem
+- additional_prompt: complementos técnicos apenas; o texto colado pelo usuário será anexado automaticamente ao gerar.
 - ambient_color, rim_light_color, fill_light_color: string (cor em hex #RRGGBB ou descrição)
 - floating_elements_enabled: boolean, floating_elements_text: string (elementos flutuantes)
+- subject_enabled: boolean; subject_mode: "person" ou "product"; quantity: 1 a 5
 Responda somente com o JSON.`;
 
     setIsFillingFromPrompt(true);
@@ -429,7 +443,14 @@ Responda somente com o JSON.`;
       for (const key of Object.keys(parsed)) {
         if (!NEURODESIGN_FILL_ALLOWED_KEYS.has(key)) continue;
         let value = parsed[key];
-        if (key === 'shot_type' && typeof value === 'string') {
+        if (key === 'quantity') {
+          const n = Number(value);
+          if (!Number.isNaN(n)) sanitized[key] = Math.min(5, Math.max(1, Math.round(n)));
+        } else if (key === 'subject_mode' && typeof value === 'string') {
+          const v = value.trim().toLowerCase();
+          if (v === 'product' || v === 'produto' || v === 'objeto') sanitized[key] = 'product';
+          else if (v === 'person' || v === 'pessoa' || v === 'people' || v === 'retrato') sanitized[key] = 'person';
+        } else if (key === 'shot_type' && typeof value === 'string') {
           const normalized = normalizeShotType(value) || (NEURODESIGN_FILL_ENUMS.shot_type.includes(value.trim()) ? value.trim() : null);
           if (normalized) sanitized[key] = normalized;
         } else if (key === 'image_size' && (typeof value === 'string' || typeof value === 'number')) {
@@ -455,7 +476,7 @@ Responda somente com o JSON.`;
           if (typeof value.blur_enabled === 'boolean') next.blur_enabled = value.blur_enabled;
           if (typeof value.lateral_gradient_enabled === 'boolean') next.lateral_gradient_enabled = value.lateral_gradient_enabled;
           sanitized[key] = next;
-        } else if (key === 'text_enabled' || key === 'text_gradient' || key === 'floating_elements_enabled' || key === 'use_reference_image_text') {
+        } else if (key === 'text_enabled' || key === 'text_gradient' || key === 'floating_elements_enabled' || key === 'use_reference_image_text' || key === 'subject_enabled') {
           sanitized[key] = Boolean(value);
         } else if (typeof value === 'string' || typeof value === 'number') {
           sanitized[key] = value;
@@ -468,6 +489,14 @@ Responda somente com o JSON.`;
           if (key === 'visual_attributes') merged.visual_attributes = { ...(base.visual_attributes || {}), ...sanitized.visual_attributes };
           else merged[key] = sanitized[key];
         }
+        const briefOriginal = trimmed.trim();
+        const llmExtra = sanitized.additional_prompt != null ? String(sanitized.additional_prompt).trim() : '';
+        const combinedAp = [
+          'BRIEF ORIGINAL (texto integral de Preencher com IA):',
+          briefOriginal,
+          llmExtra ? `--- NOTAS TÉCNICAS EXTRAÍDAS ---\n${llmExtra}` : '',
+        ].filter(Boolean).join('\n\n');
+        merged.additional_prompt = combinedAp.slice(0, 80000);
         return merged;
       });
       toast({ title: 'Campos preenchidos com sucesso!' });

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
-import { ArrowRight, Bot, FileText, BarChart2, Clapperboard, Share2, PenSquare, MessagesSquare, Lightbulb, Search, CalendarDays, Globe, Lock, Palette, Church } from 'lucide-react';
+import { ArrowRight, Bot, FileText, BarChart2, Clapperboard, Share2, PenSquare, MessagesSquare, Lightbulb, Search, CalendarDays, Globe, Lock, Palette, Church, Film } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const allTools = [
@@ -43,6 +43,13 @@ const allTools = [
         path: '/ferramentas/neurodesign',
         permissionKey: null,
         highlight: true,
+    },
+    {
+        title: 'Neuro Flow',
+        description: 'Gere vídeos com modelos Veo usando prompt e frames inicial/final.',
+        icon: <Film className="h-8 w-8 text-primary" />,
+        path: '/ferramentas/neuro-flow',
+        permissionKey: null,
     },
     {
         title: 'Artes de Culto',

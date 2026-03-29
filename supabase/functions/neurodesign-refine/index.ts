@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { enqueueUserGoogle } from "../_shared/googleUserQueue.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -418,7 +419,9 @@ serve(async (req) => {
               providerLabel = "openrouter";
             }
           } else if (apiUrl.includes("generativelanguage") || conn.provider?.toLowerCase() === "google") {
-            const result = await refineWithGoogleGemini(conn as Conn, resolvedImageUrls, textPrompt, dimensionsForApi, imageSizeForApi);
+            const result = await enqueueUserGoogle(user.id, () =>
+              refineWithGoogleGemini(conn as Conn, resolvedImageUrls, textPrompt, dimensionsForApi, imageSizeForApi)
+            );
             if (result) {
               refinedUrl = result.url;
               providerLabel = "google";

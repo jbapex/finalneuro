@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+    import { useNavigate } from 'react-router-dom';
     import { motion } from 'framer-motion';
-    import { Send, Menu, Loader2, Square, ChevronsUpDown, Brain, Settings2, Share2, Download, Plus, Briefcase, Sparkles, Mic, Paperclip, Cloud, FileText, ListChecks, Layers, Blocks, X } from 'lucide-react';
+    import { Send, Menu, Loader2, Square, ChevronsUpDown, Brain, Settings2, Share2, Download, Plus, Briefcase, Sparkles, Mic, Paperclip, Cloud, FileText, ListChecks, Layers, Blocks, X, ImageIcon } from 'lucide-react';
     import { Button } from '@/components/ui/button';
     import { Textarea } from '@/components/ui/textarea';
     import { useToast } from '@/components/ui/use-toast';
@@ -17,9 +18,78 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { getFriendlyErrorMessage } from '@/lib/utils';
+import { NEURODESIGN_CHAT_FILL_STORAGE_KEY } from '@/lib/neurodesign/chatBridge';
 
 const DEEP_RESEARCH_SYSTEM_PROMPT =
   'Você está no modo Deep Research. Para cada pergunta, faça uma análise profunda, traga contexto, compare alternativas e apresente um resumo final com próximos passos práticos. Seja estruturado, organizado em tópicos e indique fontes ou hipóteses quando não tiver certeza.';
+
+const NEURODESIGN_IMAGE_SYSTEM_PROMPT =
+  'Você está no modo "Prompt para NeuroDesign". Atue como diretor de arte / designer sênior de marcas de alto padrão (agência premium, não estética amadora ou genérica de IA).\n\n' +
+  'OBJETIVO DO BRIEF\n' +
+  '- Produzir UM brief único, denso e executável para o gerador NeuroDesign, pensado para arte que POSICIONA: hierarquia clara, mensagem estratégica, credibilidade e desejo — nunca "arte genérica feita com IA".\n' +
+  '- Evite clichês visuais de IA: cores saturadas demais sem critério, glow neon gratuito, composições simétricas vazias, estilo "stock futurista", rostos plastificados, texturas genéricas, excesso de elementos sem narrativa.\n' +
+  '- Prefira linguagem de briefing profissional: referência de mood (fotografia editorial, design gráfico premiado, identidade de marca real), tratamento de luz, grain/film ou limpeza intencional, grid, respiro negativo, contraste tipográfico, tom emocional alinhado ao posicionamento.\n' +
+  '- INSPIRAÇÃO DE ESTILO (adapte ao pedido; não invente marcas de terceiros): peças de social ads de agência — foto real de ambiente + layout com molduras geométricas e tipografia bold; capa de carrossel com retrato cinematográfico e colagem/textura (papel, jornal) com UM acento neon ou cor de destaque disciplinada; workshop/evento com paleta enxuta (ex. teal/preto), bokeh, grain leve, elementos tipo glass em pills; metáforas fotográficas (produto, xadrez, cenário escuro com ouro); dark mode com acento lima ou vermelho institucional; minimalismo editorial com muito espaço negativo; 3D apenas se for nível comercial/cinematográfico (texturas críveis, rim light), nunca cartoon genérico.\n\n' +
+  'O BRIEF DEVE COBRIR (de forma integrada, em prosa objetiva)\n' +
+  '- Proposta de valor / mensagem principal e público-alvo implícito.\n' +
+  '- Posicionamento: premium, aspiracional, institucional, disruptivo etc. — e o que a peça deve fazer sentir (confiança, urgência, pertencimento, autoridade…).\n' +
+  '- Direção visual: fotografia vs ilustração vs híbrido; realismo ou abstração; época/referência cultural se fizer sentido.\n' +
+  '- Paleta com intenção (não só "cores bonitas"): tons, contraste, acento cromático único se aplicável.\n' +
+  '- Composição: regra dos terços ou estrutura deliberada, foco visual, ritmo, uso do espaço negativo.\n' +
+  '- Tipografia na arte (se houver): peso, estilo, hierarquia headline/sub/CTA; evitar combinações genéricas sem critério.\n' +
+  '- Formato sugerido (feed 4:5, stories 9:16, quadrado) e uso (campanha, orgânico, anúncio).\n\n' +
+  'Responda em português do Brasil. Pode incluir até 2 frases introdutórias opcionais antes do bloco técnico.\n\n' +
+  'OBRIGATÓRIO: ao final, um único bloco entre estes marcadores (sem alterar os nomes):\n' +
+  '<<<NEURODESIGN_PROMPT>>>\n' +
+  '[Brief em prosa densa: inclua sempre intenção de ILUMINAÇÃO (ex.: rim light, low-key, luz de estúdio), TEXTURA (pele real, metal, papel, grain opcional), COMPOSIÇÃO (terços, camadas, espaço negativo) e HIERARQUIA TIPOGRÁFICA se houver texto. Deixe explícito o que NÃO fazer para evitar cara de IA genérica.]\n' +
+  '<<<END_NEURODESIGN_PROMPT>>>\n\n' +
+  'Nada após <<<END_NEURODESIGN_PROMPT>>>. Dentro dos marcadores: só o brief, sem meta-comentários ("segue o brief", "espero que goste").';
+
+const chatAssistantPlainText = (content) => {
+  if (content == null) return '';
+  if (typeof content === 'string') return content;
+  if (typeof content === 'object' && content.text != null) return String(content.text);
+  return '';
+};
+
+const chatUserPlainText = (content) => {
+  if (content == null) return '';
+  if (typeof content === 'string') return content;
+  if (typeof content === 'object' && content.text != null) return String(content.text);
+  if (typeof content === 'object' && typeof content.content === 'string') return content.content;
+  return '';
+};
+
+/** Trecho do fio recente para ancorar sugestões no mesmo assunto (Edge Function generate-chat-follow-ups). */
+const buildFollowUpConversationThread = (finalMessages) => {
+  if (!Array.isArray(finalMessages) || finalMessages.length === 0) return '';
+  const maxTotal = 12000;
+  const maxUserChunk = 2200;
+  const maxAsstChunk = 3500;
+  const slice = finalMessages.slice(-12);
+  const parts = [];
+  let total = 0;
+  for (const m of slice) {
+    if (m.role !== 'user' && m.role !== 'assistant') continue;
+    const roleLabel = m.role === 'user' ? 'Usuário' : 'Assistente';
+    const raw = m.role === 'user' ? chatUserPlainText(m.content) : chatAssistantPlainText(m.content);
+    const text = raw.trim();
+    if (!text) continue;
+    const capped =
+      m.role === 'user'
+        ? text.length > maxUserChunk
+          ? `${text.slice(0, maxUserChunk)}…`
+          : text
+        : text.length > maxAsstChunk
+          ? `${text.slice(0, maxAsstChunk)}…`
+          : text;
+    const line = `[${roleLabel}]\n${capped}\n\n`;
+    if (total + line.length > maxTotal) break;
+    parts.push(line);
+    total += line.length;
+  }
+  return parts.join('').trim();
+};
 
     // Identifica a marca do modelo pelo nome (ex.: gpt-4o -> OpenAI, claude-3 -> Claude) para exibir a logo certa mesmo quando provider é OpenRouter
     const LOGO_PROVIDER_KEYS = ['OpenAI', 'Gemini', 'Claude', 'Grok', 'Groq', 'Mistral', 'OpenRouter'];
@@ -128,11 +198,15 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
       const [isPromptPanelOpen, setIsPromptPanelOpen] = useState(false);
       const [activePrompt, setActivePrompt] = useState(null);
       const [activeFolderId, setActiveFolderId] = useState('all');
-      const [activeToolMode, setActiveToolMode] = useState(null); // ex.: 'deep_research'
+      const [activeToolMode, setActiveToolMode] = useState(null); // 'deep_research' | 'neurodesign_image' | null
       const [featureToolsOpen, setFeatureToolsOpen] = useState(false);
       const [logosByProvider, setLogosByProvider] = useState({});
+      const [aiFollowUpSuggestions, setAiFollowUpSuggestions] = useState([]);
+      const [followUpsLoading, setFollowUpsLoading] = useState(false);
+      const suggestionTokenRef = useRef(0);
 
       const { toast } = useToast();
+      const navigate = useNavigate();
       const messagesEndRef = useRef(null);
       const abortControllerRef = useRef(null);
       const isDesktop = useMediaQuery("(min-width: 768px)");
@@ -339,6 +413,8 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
           setMessages([]);
         } else {
           setMessages(data.messages || []);
+          setAiFollowUpSuggestions([]);
+          setFollowUpsLoading(false);
           // sempre restaurar a IA usada na sessão, independente do tipo de acesso
           const restored = data.llm_integration_id || data.user_ai_connection_id;
           if (restored) setSelectedLlmId(restored);
@@ -350,6 +426,8 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
       const handleNewConversation = () => {
         setActiveSessionId(null);
         setMessages([]);
+        setAiFollowUpSuggestions([]);
+        setFollowUpsLoading(false);
         setSelectedExpert(null);
         setActiveToolMode(null);
         if (!isDesktop) setIsSidebarOpen(false);
@@ -393,19 +471,27 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
         if (!isDesktop) setIsSidebarOpen(false);
       };
 
-      const handleSendMessage = async (e) => {
-        e.preventDefault();
-        if (!input.trim() || isLoading || isStreaming) return;
-        
+      const handleSendMessage = async (e, overrideText) => {
+        e?.preventDefault?.();
+        const textToSend = (overrideText !== undefined && overrideText !== null ? String(overrideText) : input).trim();
+        if (!textToSend || isLoading || isStreaming) return;
+
         if (!selectedLlmId) {
             toast({ title: "Nenhuma conexão de IA ativa", description: "Verifique se você tem uma conexão de IA ativa nas configurações ou selecione uma.", variant: "destructive" });
             return;
         }
 
-        const userMessage = { role: 'user', content: input };
+        const cameFromChip = overrideText !== undefined && overrideText !== null;
+        const originalInput = cameFromChip ? String(overrideText) : input;
+
+        suggestionTokenRef.current += 1;
+        const turnToken = suggestionTokenRef.current;
+        setAiFollowUpSuggestions([]);
+        setFollowUpsLoading(false);
+
+        const userMessage = { role: 'user', content: textToSend };
         const newMessages = [...messages, userMessage];
         setMessages(newMessages);
-        const originalInput = input;
         setInput('');
         setIsLoading(true);
         setIsStreaming(false);
@@ -461,6 +547,9 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
           }
           if (activeToolMode === 'deep_research') {
             systemMessages.push({ role: 'system', content: DEEP_RESEARCH_SYSTEM_PROMPT });
+          }
+          if (activeToolMode === 'neurodesign_image') {
+            systemMessages.push({ role: 'system', content: NEURODESIGN_IMAGE_SYSTEM_PROMPT });
           }
           if (promptSystemMessage) {
             systemMessages.push(promptSystemMessage);
@@ -552,6 +641,51 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
             await fetchSessions();
             }
           }
+
+          const assistantPlain = chatAssistantPlainText(assistantContent);
+          if (assistantPlain.length >= 24 && suggestionTokenRef.current === turnToken) {
+            setFollowUpsLoading(true);
+            void (async () => {
+              try {
+                const conversationThread = buildFollowUpConversationThread(finalMessages);
+                const { data: sugData, error: sugErr } = await supabase.functions.invoke('generate-chat-follow-ups', {
+                  body: JSON.stringify({
+                    last_user_message: textToSend,
+                    last_assistant_message: assistantPlain,
+                    conversation_thread: conversationThread,
+                    llm_integration_id: selectedLlmId,
+                    is_user_connection: currentIntegration.is_user_connection,
+                  }),
+                });
+                if (suggestionTokenRef.current !== turnToken) return;
+                if (sugErr) throw sugErr;
+                const raw = sugData?.suggestions;
+                const normalized = Array.isArray(raw)
+                  ? raw
+                      .map((x) => {
+                        if (typeof x === 'string' && x.trim()) {
+                          const p = x.trim();
+                          return { label: p.length > 72 ? `${p.slice(0, 69)}…` : p, prompt: p };
+                        }
+                        if (x && typeof x === 'object' && typeof x.prompt === 'string' && x.prompt.trim()) {
+                          const prompt = x.prompt.trim();
+                          let label = typeof x.label === 'string' && x.label.trim() ? x.label.trim() : prompt;
+                          if (label.length > 100) label = `${label.slice(0, 97)}…`;
+                          return { label, prompt };
+                        }
+                        return null;
+                      })
+                      .filter(Boolean)
+                      .slice(0, 4)
+                  : [];
+                setAiFollowUpSuggestions(normalized);
+              } catch {
+                if (suggestionTokenRef.current === turnToken) setAiFollowUpSuggestions([]);
+              } finally {
+                if (suggestionTokenRef.current === turnToken) setFollowUpsLoading(false);
+              }
+            })();
+          }
           
         } catch (err) {
           if (err.name === 'AbortError') {
@@ -584,6 +718,25 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
           inputRef.current.focus();
         }
       };
+
+      const handleApplyNeuroDesign = useCallback(
+        async (prompt) => {
+          const text = String(prompt || '').trim();
+          if (!text) return;
+          try {
+            await navigator.clipboard.writeText(text);
+          } catch {
+            /* clipboard pode falhar; o NeuroDesign ainda recebe o texto via rota/sessionStorage */
+          }
+          try {
+            sessionStorage.setItem(NEURODESIGN_CHAT_FILL_STORAGE_KEY, text);
+          } catch {
+            /* ignore */
+          }
+          navigate('/ferramentas/neurodesign', { state: { neuroChatFillPrompt: text } });
+        },
+        [navigate]
+      );
 
       const handleRemoveActivePrompt = () => {
         setActivePrompt(null);
@@ -648,26 +801,43 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
       };
 
       const renderActiveToolChip = () => {
-        if (activeToolMode !== 'deep_research') return null;
-
-        return (
-          <div className="flex flex-wrap gap-2 mb-1">
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 border border-primary/40 px-3 py-1">
-              <Sparkles className="h-3.5 w-3.5 text-primary" />
-              <span className="text-xs font-semibold text-primary">
-                Modo: Deep Research
-              </span>
-              <button
-                type="button"
-                onClick={handleRemoveActiveTool}
-                className="inline-flex items-center justify-center h-5 w-5 rounded-full hover:bg-primary/20 text-primary"
-                aria-label="Desativar modo Deep Research"
-              >
-                <X className="h-3 w-3" />
-              </button>
+        if (activeToolMode === 'deep_research') {
+          return (
+            <div className="flex flex-wrap gap-2 mb-1">
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 border border-primary/40 px-3 py-1">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                <span className="text-xs font-semibold text-primary">Modo: Deep Research</span>
+                <button
+                  type="button"
+                  onClick={handleRemoveActiveTool}
+                  className="inline-flex items-center justify-center h-5 w-5 rounded-full hover:bg-primary/20 text-primary"
+                  aria-label="Desativar modo Deep Research"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
             </div>
-          </div>
-        );
+          );
+        }
+        if (activeToolMode === 'neurodesign_image') {
+          return (
+            <div className="flex flex-wrap gap-2 mb-1">
+              <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 border border-primary/40 px-3 py-1">
+                <ImageIcon className="h-3.5 w-3.5 text-primary shrink-0" />
+                <span className="text-xs font-semibold text-primary">Modo: Prompt para NeuroDesign</span>
+                <button
+                  type="button"
+                  onClick={handleRemoveActiveTool}
+                  className="inline-flex items-center justify-center h-5 w-5 rounded-full hover:bg-primary/20 text-primary"
+                  aria-label="Desativar modo NeuroDesign"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          );
+        }
+        return null;
       };
 
       const renderToolsMenu = () => (
@@ -752,6 +922,7 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
 
       const renderFeatureToolsButton = () => {
         const isDeepResearchActive = activeToolMode === 'deep_research';
+        const isNeuroDesignActive = activeToolMode === 'neurodesign_image';
 
         return (
         <Popover open={featureToolsOpen} onOpenChange={setFeatureToolsOpen}>
@@ -808,23 +979,35 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
 
               <button
                 type="button"
-                className="w-full text-left space-y-1 rounded-md px-2 py-2 transition-colors hover:bg-muted/60"
+                className={`w-full text-left space-y-1 rounded-md px-2 py-2 transition-colors ${
+                  isNeuroDesignActive ? 'bg-primary/10 border border-primary/40' : 'hover:bg-muted/60'
+                }`}
                 onClick={() => {
-                  handleQuickPrompt(
-                    'Quero gerar uma imagem. Descreva um prompt de imagem bem detalhado (tema, estilo, cores, enquadramento) para eu usar no gerador de imagens.'
-                  );
+                  setActiveToolMode((prev) => {
+                    const next = prev === 'neurodesign_image' ? null : 'neurodesign_image';
+                    if (next) {
+                      toast({
+                        title: 'Modo NeuroDesign ativado',
+                        description:
+                          'Descreva a peça. A IA redige um brief de direção de arte premium (posicionamento, não estética genérica) e o botão leva ao NeuroDesign.',
+                      });
+                    } else {
+                      toast({ title: 'Modo NeuroDesign desativado', description: 'O chat voltou ao comportamento padrão.' });
+                    }
+                    return next;
+                  });
                   setFeatureToolsOpen(false);
                 }}
               >
                 <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Briefcase className="h-4 w-4 text-primary" />
-                  <span>Gerar Imagem</span>
+                  <ImageIcon className="h-4 w-4 text-primary shrink-0" />
+                  <span>Prompt para NeuroDesign</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Dica: você também pode gerar imagens pedindo diretamente aqui no chat.
+                  Brief no nível de diretor de arte: posicionamento, hierarquia e intenção visual — evitando clichês de “arte de IA”. O botão copia, abre o NeuroDesign e preenche Preencher com IA.
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Exemplo: gere uma imagem de um cavalo branco em um fundo azul.
+                  Exemplo: key visual de lançamento premium para público executivo, fotografia editorial, paleta sóbria com um acento cromático, headline forte e CTA discreto.
                 </p>
               </button>
             </div>
@@ -972,16 +1155,12 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
                     ) : (
                     <>
                     <ScrollArea className="flex-1 min-h-0">
-                        <div className="p-6 space-y-6 max-w-4xl mx-auto pb-4">
+                        <div className="px-4 py-3 space-y-3 max-w-5xl mx-auto pb-3 sm:px-5 sm:py-4 sm:space-y-4">
                         {messages.map((msg, index) => {
                             const isLastAssistant = !msg.role || msg.role === 'assistant';
                             const showSuggestions = index === messages.length - 1 && isLastAssistant;
-                            const suggestedPrompts = showSuggestions ? [
-                              'Explique isso de uma forma mais simples.',
-                              'Dê exemplos práticos relacionados a essa resposta.',
-                              'Resuma os principais pontos em uma lista.',
-                              'Mostre próximos passos práticos que eu posso seguir.',
-                            ] : undefined;
+                            const suggestedPrompts = showSuggestions ? aiFollowUpSuggestions : undefined;
+                            const suggestedPromptsLoading = showSuggestions && followUpsLoading;
                             const aiName = (llmIntegrations.find((i) => i.id === selectedLlmId)?.name) || 'ONE';
                             return (
                             <AiChatMessage 
@@ -991,7 +1170,9 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
                               onStreamingFinished={() => setIsStreaming(false)}
                                 aiName={aiName}
                                 suggestedPrompts={suggestedPrompts}
-                                onSuggestedPromptClick={handleQuickPrompt}
+                                suggestedPromptsLoading={suggestedPromptsLoading}
+                                onSuggestedPromptClick={(prompt) => handleSendMessage(null, prompt)}
+                                onApplyNeuroDesign={handleApplyNeuroDesign}
                             />
                             );
                         })}
@@ -1002,7 +1183,7 @@ const DEEP_RESEARCH_SYSTEM_PROMPT =
                     </ScrollArea>
 
                     <div className="shrink-0 p-4 bg-background/80 dark:bg-[#1A1A1D] backdrop-blur-sm border-t border-border/50">
-                        <div className="max-w-4xl mx-auto space-y-2">
+                        <div className="max-w-5xl mx-auto space-y-2">
                           {renderActivePromptChip()}
                           {renderActiveToolChip()}
                           {renderActiveContextChips()}

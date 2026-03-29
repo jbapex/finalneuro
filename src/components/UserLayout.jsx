@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Settings, Menu, Target, Users, BarChart, SlidersHorizontal, GitFork, Lock } from 'lucide-react';
+import { Bot, Settings, Menu, Users, BarChart, SlidersHorizontal, GitFork, Lock } from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
 import MobileNavBar from '@/components/MobileNavBar';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
@@ -14,11 +14,6 @@ import { cn } from '@/lib/utils';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useSystemLogo } from '@/lib/systemBranding';
 const mainNavItems = [{
-  to: '/campanhas',
-  icon: Target,
-  label: 'Campanhas',
-  permissionKey: null
-}, {
   to: '/clientes',
   icon: Users,
   label: 'Clientes',
@@ -104,7 +99,6 @@ const UserLayout = () => {
     }
   }, [isChatIaPage, isNeuroDesignPage, isDesktop]);
   const pageTitleData = {
-    '/campanhas': 'Campanhas',
     '/clientes': 'Clientes',
     '/ferramentas': 'Ferramentas',
     '/chat-ia': 'Chat IA',
@@ -139,7 +133,7 @@ const UserLayout = () => {
   };
   const SidebarContent = () => <div className="flex h-full max-h-screen flex-col">
       <div className="flex h-14 items-center border-b px-2 lg:h-[60px] lg:px-4 shrink-0">
-        <NavLink to="/campanhas" className="flex items-center justify-center w-full font-semibold">
+        <NavLink to="/ferramentas" className="flex items-center justify-center w-full font-semibold">
           {(() => {
             const prefersDark = theme === 'dark' || theme === 'system';
             const logoToShow = prefersDark ? darkLogoUrl || lightLogoUrl : lightLogoUrl || darkLogoUrl;

@@ -17,11 +17,18 @@ chmod +x deploy-from-neuroapice.sh
 ```
 
 O script:
-1. Executa `npm run build` em `/root/neuroapice`
-2. Copia todas as pastas de `neuroapice/supabase/functions/` para `/root/supabase/docker/volumes/functions/` (lista: `download-video`, `generate-content`, `generic-ai-chat`, `get-google-models`, `get-openai-models`, `get-openrouter-models`, `get-video-metadata`, `neurodesign-generate`, `neurodesign-generate-google`, `neurodesign-refine`, `neurodesign-refine-google`, `page-analyzer`, `site-builder-assistant`)
+1. Executa `npm run build` em `/root/neuroapice` (saída em `neuroapice/dist`)
+2. Copia todas as pastas de `neuroapice/supabase/functions/` para `/root/supabase/docker/volumes/functions/`
 3. Executa `docker service update --force supabase_supabase_functions`
+4. **Opcional:** se definires `NEUROAPICE_DIST_TARGET` (ex.: diretório que o nginx monta), o script copia o conteúdo de `dist/` para lá — caso contrário o site público pode continuar com **JavaScript antigo** (ex.: validações antigas no formulário de Clientes).
 
-Assim o front e as Edge Functions passam a ser servidos com o código atual de `neuroapice`. O container que serve o front deve estar configurado para usar o `dist` gerado em `neuroapice/dist` (ou o mesmo diretório que o script de deploy do nginx/servidor usa).
+Exemplo com publicação do front:
+
+```bash
+NEUROAPICE_DIST_TARGET=/caminho/do/teu/html NEUROAPICE_DEPLOY_UNLOCK=1 ./deploy-from-neuroapice.sh
+```
+
+O container ou nginx que serve `neuro.jbapex.com.br` tem de apontar para esse `dist` (ou para o destino onde copiaste). Depois de publicar, usa **hard refresh** (Ctrl+Shift+R) para não ficar com bundle em cache.
 
 ---
 

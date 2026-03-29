@@ -9,6 +9,7 @@ import { Plus, Trash2, Edit, KeyRound, Image as ImageIcon, Bot, ToggleLeft, Togg
 import UserLlmConnectionDialog from '@/pages/user/settings/UserLlmConnectionDialog';
 import UserImageConnectionDialog from '@/pages/user/settings/UserImageConnectionDialog';
 import UserSiteBuilderConnectionDialog from '@/pages/user/settings/UserSiteBuilderConnectionDialog';
+import { getDefaultAiConnection, setDefaultAiConnection } from '@/lib/userAiDefaults';
 
 const UserAiSettings = () => {
   const { user } = useAuth();
@@ -19,6 +20,8 @@ const UserAiSettings = () => {
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
   const [isSiteBuilderDialogOpen, setIsSiteBuilderDialogOpen] = useState(false);
   const [editingConnection, setEditingConnection] = useState(null);
+  const [defaultLlmId, setDefaultLlmId] = useState('');
+  const [defaultImageId, setDefaultImageId] = useState('');
 
   const fetchConnections = useCallback(async () => {
     if (!user) return;
@@ -39,6 +42,20 @@ const UserAiSettings = () => {
   useEffect(() => {
     fetchConnections();
   }, [fetchConnections]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setDefaultLlmId(getDefaultAiConnection(user.id, 'llm'));
+    setDefaultImageId(getDefaultAiConnection(user.id, 'image'));
+  }, [user?.id]);
+
+  const handleSetDefault = (connection, type) => {
+    if (!user?.id || !connection?.id) return;
+    setDefaultAiConnection(user.id, type, connection.id);
+    if (type === 'llm') setDefaultLlmId(String(connection.id));
+    if (type === 'image') setDefaultImageId(String(connection.id));
+    toast.success(`"${connection.name}" definida como padrão.`);
+  };
 
   const handleEdit = (connection) => {
     setEditingConnection(connection);
@@ -102,6 +119,14 @@ const UserAiSettings = () => {
 
   const renderConnectionCard = (connection, index, type) => (
     <motion.div key={connection.id} custom={index} variants={cardVariants} initial="hidden" animate="visible">
+      {(() => {
+        const isDefault =
+          type === 'llm'
+            ? String(defaultLlmId) === String(connection.id)
+            : type === 'image'
+              ? String(defaultImageId) === String(connection.id)
+              : false;
+        return (
       <Card className={`overflow-hidden border-2 ${connection.is_active ? 'border-primary shadow-lg shadow-primary/20' : 'border-border'} bg-card/50 backdrop-blur-sm`}>
         <CardHeader>
           <div className="flex justify-between items-start">
@@ -109,6 +134,11 @@ const UserAiSettings = () => {
               <CardTitle className="flex items-center gap-2 text-lg">
                 {getIconForType(type)}
                 {connection.name}
+                {isDefault && (
+                  <span className="rounded-full border border-primary/40 bg-primary/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                    Padrão
+                  </span>
+                )}
               </CardTitle>
               <CardDescription>{connection.provider}</CardDescription>
             </div>
@@ -124,10 +154,21 @@ const UserAiSettings = () => {
           </div>
         </CardContent>
         <CardFooter className="flex justify-end gap-2">
+          {(type === 'llm' || type === 'image') && (
+            <Button
+              variant={isDefault ? 'secondary' : 'outline'}
+              size="sm"
+              onClick={() => handleSetDefault(connection, type)}
+            >
+              {isDefault ? 'Conexão padrão' : 'Definir padrão'}
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={() => handleEdit(connection)}><Edit className="w-4 h-4 mr-2" /> Editar</Button>
           <Button variant="destructive" size="sm" onClick={() => handleDelete(connection.id)}><Trash2 className="w-4 h-4 mr-2" /> Remover</Button>
         </CardFooter>
       </Card>
+        );
+      })()}
     </motion.div>
   );
 

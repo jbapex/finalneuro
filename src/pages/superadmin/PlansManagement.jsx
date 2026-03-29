@@ -38,6 +38,7 @@ const PlansManagement = () => {
     plan_image_generation_config: {
       max_size: 1024,
       max_images_per_job: 2,
+      creative_flow_limit: 3,
       allowed_model_ids: [],
       cost_markup_percentage: 20,
     },
@@ -111,6 +112,7 @@ const PlansManagement = () => {
         ...formData.plan_image_generation_config,
         max_size: parseInt(formData.plan_image_generation_config.max_size),
         max_images_per_job: parseInt(formData.plan_image_generation_config.max_images_per_job),
+        creative_flow_limit: parseInt(formData.plan_image_generation_config.creative_flow_limit || 3),
         cost_markup_percentage: parseInt(formData.plan_image_generation_config.cost_markup_percentage),
         allowed_model_ids: formData.plan_image_generation_config.allowed_model_ids.map(Number),
       },
@@ -200,6 +202,7 @@ const PlansManagement = () => {
       plan_image_generation_config: {
         max_size: plan.plan_image_generation_config?.max_size || 1024,
         max_images_per_job: plan.plan_image_generation_config?.max_images_per_job || 2,
+        creative_flow_limit: plan.plan_image_generation_config?.creative_flow_limit || 3,
         allowed_model_ids: plan.plan_image_generation_config?.allowed_model_ids?.map(String) || [],
         cost_markup_percentage: plan.plan_image_generation_config?.cost_markup_percentage || 20,
       },
@@ -338,6 +341,12 @@ const PlansManagement = () => {
                         <div>
                             <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center"><ImageIcon className="w-4 h-4 mr-1" /> Modelos de Imagem Permitidos:</p>
                             <p className="text-xs">{getImageModelNames(plan.plan_image_generation_config.allowed_model_ids)}</p>
+                        </div>
+                    )}
+                    {plan.has_creative_flow_access && (
+                        <div>
+                            <p className="text-xs font-semibold text-muted-foreground mb-1 flex items-center"><Share2 className="w-4 h-4 mr-1" /> Limite de Fluxos Criativos:</p>
+                            <p className="text-xs">{plan.plan_image_generation_config?.creative_flow_limit || 3} fluxos</p>
                         </div>
                     )}
                 </div>

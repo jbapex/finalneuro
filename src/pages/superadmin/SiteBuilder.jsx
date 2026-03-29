@@ -3,13 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { Helmet } from 'react-helmet';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft, Download } from 'lucide-react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
 
 import ChatPanel from '@/components/site-builder/ChatPanel';
 import PreviewPanel from '@/components/site-builder/PreviewPanel';
 import ImageBankModal from '@/components/site-builder/ImageBankModal';
+import { buildDeployableSiteHtml, triggerDownloadTextFile } from '@/lib/siteBuilderDocument';
 
 const SiteBuilder = () => {
   const { projectId } = useParams();
@@ -91,6 +92,27 @@ const SiteBuilder = () => {
     selectedElementRef.current = selectedElement;
   }, [selectedElement]);
 
+  const handleDownloadForHosting = useCallback(() => {
+    const doc = buildDeployableSiteHtml({
+      htmlContent,
+      pageStructure: null,
+      title: project?.name || 'Site',
+    });
+    if (!doc) {
+      toast({
+        title: 'Nada para exportar',
+        description: 'Gere conteúdo antes de baixar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    triggerDownloadTextFile(doc, 'index.html');
+    toast({
+      title: 'index.html gerado',
+      description: 'Envie para public_html na Hostinger ou Hostgator.',
+    });
+  }, [htmlContent, project?.name, toast]);
+
   const onImageSelect = (image) => {
     const currentSelectedElement = selectedElementRef.current;
     if (!currentSelectedElement || currentSelectedElement.type !== 'image') {
@@ -147,7 +169,11 @@ const SiteBuilder = () => {
            <Button variant="ghost" size="icon" onClick={() => navigate('/superadmin/criar-site')}>
               <ArrowLeft className="h-5 w-5" />
            </Button>
-           <h1 className="text-lg font-semibold">{project.name}</h1>
+           <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">{project.name}</h1>
+           <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={handleDownloadForHosting}>
+             <Download className="h-4 w-4 mr-2" />
+             Para hospedagem
+           </Button>
          </header>
         <ResizablePanelGroup direction="horizontal" className="flex-grow">
           <ResizablePanel defaultSize={40} minSize={30}>

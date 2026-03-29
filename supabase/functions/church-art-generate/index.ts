@@ -369,7 +369,7 @@ serve(async (req) => {
     const { data: insertedImages, error: insertError } = await supabase
       .from("neurodesign_generated_images")
       .insert(imageRows)
-      .select("id, run_id, project_id, url, thumbnail_url, width, height");
+      .select("id, run_id, project_id, url, thumbnail_url, width, height, created_at");
 
     if (insertError) {
       await supabase

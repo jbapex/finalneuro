@@ -339,7 +339,12 @@ const CarouselNode = memo(({ data, id }) => {
         newSlides[idx] = { ...(newSlides[idx] || {}), imageUrl: result.lastImageUrl, prompt: newSlides[idx]?.prompt ?? slides[idx]?.prompt ?? '' };
         onUpdateNodeData(id, { slides: newSlides });
         if (typeof onAddCarouselSlideImageNode === 'function') {
-          onAddCarouselSlideImageNode(id, `slide-${idx}`, result.lastImageUrl, result.output || {});
+          const out = result.output || {};
+          const imgs = Array.isArray(out.data) ? out.data : [];
+          onAddCarouselSlideImageNode(id, `slide-${idx}`, result.lastImageUrl, {
+            ...out,
+            imageGeneratedAt: imgs[0]?.created_at || new Date().toISOString(),
+          });
         }
         toast({ title: 'Imagem do Neuro Designer aplicada à lâmina!' });
       }
@@ -747,7 +752,13 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
           newSlides[slideIndex] = { ...existing, imageUrl, prompt: existing.prompt ?? slidePrompt, runId, imageId, projectId };
           onUpdateNodeData(id, { slides: newSlides });
           if (typeof onAddCarouselSlideImageNode === 'function') {
-            onAddCarouselSlideImageNode(id, `slide-${slideIndex}`, imageUrl, { runId, images, projectId, userAiConnectionId: selectedImageConnectionId });
+            onAddCarouselSlideImageNode(id, `slide-${slideIndex}`, imageUrl, {
+              runId,
+              images,
+              projectId,
+              userAiConnectionId: selectedImageConnectionId,
+              imageGeneratedAt: first.created_at || new Date().toISOString(),
+            });
           }
           toast({ title: 'Imagem gerada com sucesso!' });
         } else {

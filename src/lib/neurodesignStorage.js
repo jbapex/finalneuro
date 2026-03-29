@@ -59,7 +59,7 @@ async function compressImage(file) {
  * Upload de arquivo para o bucket neurodesign.
  * @param {string} userId - auth user id
  * @param {string} projectId - neurodesign project id
- * @param {'subject'|'scenario'|'style_refs'|'logo'|'refine_ref'|'refine_replacement'|'refine_crop'|'refine_add'} type - pasta do tipo
+ * @param {'subject'|'scenario'|'style_refs'|'logo'|'wizard_ref'|'refine_ref'|'refine_replacement'|'refine_crop'|'refine_add'} type - pasta do tipo
  * @param {File} file
  * @returns {Promise<string>} URL pública
  */

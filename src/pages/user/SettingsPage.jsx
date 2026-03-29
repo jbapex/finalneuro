@@ -1,8 +1,8 @@
 import React from 'react';
     import { NavLink, useParams } from 'react-router-dom';
-    import { User, CreditCard, Plug, Bot } from 'lucide-react';
+    import { User, CreditCard, Bot } from 'lucide-react';
     import ProfileTab from './settings/ProfileTab';
-    import IntegrationsTab from './settings/IntegrationsTab';
+    import BillingTab from './settings/BillingTab';
     import UserAiSettings from './settings/UserAiSettings';
     import { useAuth } from '@/contexts/SupabaseAuthContext';
 
@@ -12,8 +12,7 @@ import React from 'react';
         
         const tabs = [
             { id: 'profile', label: 'Perfil', icon: User, component: <ProfileTab />, permission: true },
-            { id: 'billing', label: 'Assinatura', icon: CreditCard, component: <div>Em breve...</div>, permission: true },
-            { id: 'integrations', label: 'Integrações', icon: Plug, component: <IntegrationsTab />, permission: true },
+            { id: 'billing', label: 'Assinatura', icon: CreditCard, component: <BillingTab />, permission: true },
             { id: 'ai', label: 'Minha IA', icon: Bot, component: <UserAiSettings />, permission: hasPermission('custom_ai') },
         ].filter(t => t.permission);
         

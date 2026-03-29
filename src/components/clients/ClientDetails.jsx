@@ -15,7 +15,7 @@ import {
   DialogFooter,
   DialogClose,
 } from '@/components/ui/dialog';
-import { Loader2, Edit, Trash2, Target, ArrowLeft, Bot, User, Tag, Star, Mic, ShoppingBag, Users, BarChart2, Eye, Sparkles, MessageCircle, CalendarDays, FileText } from 'lucide-react';
+import { Loader2, Edit, Trash2, ArrowLeft, User, Tag, Star, Mic, ShoppingBag, Users, BarChart2, Eye, Sparkles, MessageCircle, CalendarDays, FileText } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -42,9 +42,7 @@ const DetailItem = ({ icon: Icon, label, value }) => {
   );
 };
 
-const ClientDetails = ({ client, onEdit, onDelete, onNavigateToCampaign, onGoBack, onContextSaved }) => {
-  const [campaigns, setCampaigns] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+const ClientDetails = ({ client, onEdit, onDelete, onGoBack, onContextSaved }) => {
   const [contexts, setContexts] = useState([]);
   const [contextModalOpen, setContextModalOpen] = useState(false);
   const [editingContext, setEditingContext] = useState(null);
@@ -120,31 +118,6 @@ const ClientDetails = ({ client, onEdit, onDelete, onNavigateToCampaign, onGoBac
     }
     setContexts((prev) => prev.filter((c) => c.id !== ctx.id));
     toast({ title: 'Contexto excluído' });
-  };
-
-  const fetchCampaigns = useCallback(async () => {
-    setIsLoading(true);
-    const { data, error } = await supabase
-      .from('campaigns')
-      .select('*')
-      .eq('client_id', client.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      toast({ title: "Erro ao buscar campanhas", description: error.message, variant: "destructive" });
-    } else {
-      setCampaigns(data);
-    }
-    setIsLoading(false);
-  }, [client.id, toast]);
-
-  useEffect(() => {
-    fetchCampaigns();
-  }, [fetchCampaigns]);
-  
-  const handleGoToContent = (campaignId) => {
-    onGoBack(); // Close drawer
-    navigate(`/campanhas/editar/${campaignId}`, { state: { directToContent: true } });
   };
 
   const handleGoToCalendar = () => {
@@ -267,41 +240,6 @@ const ClientDetails = ({ client, onEdit, onDelete, onNavigateToCampaign, onGoBac
           </CardContent>
         </Card>
 
-        <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
-          <Target className="w-5 h-5" /> Campanhas
-        </h3>
-        {isLoading ? (
-          <div className="flex justify-center items-center py-8">
-            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-          </div>
-        ) : campaigns.length === 0 ? (
-          <div className="text-center py-8 border-2 border-dashed rounded-lg">
-            <p className="text-muted-foreground">Nenhuma campanha encontrada para este cliente.</p>
-          </div>
-        ) : (
-          <div className="space-y-4">
-            {campaigns.map((campaign) => (
-              <Card key={campaign.id} className="transition-all hover:shadow-md">
-                <CardContent className="p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                    <div>
-                        <p className="font-semibold text-card-foreground">{campaign.name}</p>
-                        <p className="text-sm text-muted-foreground">
-                            Criada em: {new Date(campaign.created_at).toLocaleDateString()}
-                        </p>
-                    </div>
-                    <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        <Button variant="outline" size="sm" onClick={() => handleGoToContent(campaign.id)}>
-                            <Bot className="w-4 h-4 mr-2" /> Gerar Conteúdo
-                        </Button>
-                        <Button variant="default" size="sm" onClick={() => onNavigateToCampaign(campaign.id)}>
-                            <MessageCircle className="w-4 h-4 mr-2" /> Copiloto
-                        </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
       </ScrollArea>
 
       <Dialog open={contextModalOpen} onOpenChange={setContextModalOpen}>

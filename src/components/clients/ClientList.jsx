@@ -2,7 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { PlusCircle, Edit, Trash2, Calendar, FolderOpen } from 'lucide-react';
+import { PlusCircle, Edit, Trash2, Calendar } from 'lucide-react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,11 +28,6 @@ const ClientList = ({ clients, onEdit, onDelete, onSelect }) => {
     navigate(`/ferramentas/calendario-de-publicacao/${clientId}`);
   };
 
-  const handleCampaignsClick = (e, client) => {
-    e.stopPropagation();
-    navigate('/campanhas', { state: { selectedClientId: client.id } });
-  }
-
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
       {clients.map((client, index) => (
@@ -51,15 +46,7 @@ const ClientList = ({ clients, onEdit, onDelete, onSelect }) => {
               <CardTitle>{client.name}</CardTitle>
               <CardDescription className="line-clamp-2 h-10">{client.about || 'Sem descrição.'}</CardDescription>
             </CardHeader>
-            <CardContent className="flex-grow">
-              <div className="flex justify-between items-center text-sm text-muted-foreground">
-                <button onClick={(e) => handleCampaignsClick(e, client)} className="flex items-center gap-2 hover:text-primary">
-                  <FolderOpen className="h-4 w-4" />
-                  <span>Campanhas</span>
-                </button>
-                <span className="font-bold text-foreground">{client.campaigns[0]?.count || 0}</span>
-              </div>
-            </CardContent>
+            <CardContent className="flex-grow" />
             <CardFooter className="flex justify-end gap-2 p-4 pt-0">
                 <Button variant="ghost" size="icon" onClick={(e) => handleCalendarClick(e, client.id)} title="Calendário de Publicações">
                   <Calendar className="h-4 w-4" />

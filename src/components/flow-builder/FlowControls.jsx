@@ -4,7 +4,17 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Loader2, Save, Plus, ArrowLeft, Trash2, ChevronDown, ListTree } from 'lucide-react';
 
-const FlowControls = ({ onSave, onNew, onDelete, flows, onFlowSelect, activeFlow, isLoading, isSaving }) => {
+const FlowControls = ({
+    onSave,
+    onNew,
+    onDelete,
+    flows,
+    onFlowSelect,
+    activeFlow,
+    isReferenceLoading,
+    isLoadingFlow,
+    isSaving,
+}) => {
     const navigate = useNavigate();
     return (
         <div className="w-full bg-card p-2 shadow-md border-b flex items-center gap-2">
@@ -14,8 +24,9 @@ const FlowControls = ({ onSave, onNew, onDelete, flows, onFlowSelect, activeFlow
             
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="w-[250px] justify-between" disabled={isLoading}>
-                        <span className="truncate">
+                    <Button variant="outline" className="w-[250px] justify-between" disabled={isLoadingFlow}>
+                        <span className="truncate flex items-center gap-2 min-w-0">
+                            {isLoadingFlow && <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />}
                             {activeFlow ? activeFlow.name : "Selecione um fluxo"}
                         </span>
                         <ChevronDown className="h-4 w-4 opacity-50 flex-shrink-0" />
@@ -35,13 +46,13 @@ const FlowControls = ({ onSave, onNew, onDelete, flows, onFlowSelect, activeFlow
                 </DropdownMenuContent>
             </DropdownMenu>
 
-            <Button onClick={onNew} size="icon" variant="outline" disabled={isLoading} title="Novo Fluxo">
+            <Button onClick={onNew} size="icon" variant="outline" disabled={isLoadingFlow} title="Novo Fluxo">
                 <Plus className="h-4 w-4" />
             </Button>
-            <Button onClick={onSave} size="icon" variant="outline" disabled={isLoading || isSaving} title="Salvar Fluxo">
+            <Button onClick={onSave} size="icon" variant="outline" disabled={isReferenceLoading || isSaving || isLoadingFlow} title="Salvar Fluxo">
                 {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             </Button>
-            <Button onClick={onDelete} size="icon" variant="destructive" disabled={!activeFlow || isLoading || isSaving} title="Excluir Fluxo">
+            <Button onClick={onDelete} size="icon" variant="destructive" disabled={!activeFlow || isReferenceLoading || isSaving || isLoadingFlow} title="Excluir Fluxo">
                 <Trash2 className="h-4 w-4" />
             </Button>
         </div>

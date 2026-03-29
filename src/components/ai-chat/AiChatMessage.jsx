@@ -1,10 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
     import { motion } from 'framer-motion';
     import ReactMarkdown from 'react-markdown';
-    import { Bot, User, Loader2, Volume2, Download, Copy, RefreshCw, Play, Heart, ThumbsUp, ThumbsDown, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
+    import { Bot, User, Loader2, Volume2, Download, Copy, RefreshCw, Play, Heart, ThumbsUp, ThumbsDown, Lightbulb, ChevronDown, ChevronUp, ImageIcon } from 'lucide-react';
     import { Avatar, AvatarFallback } from '@/components/ui/avatar';
     import { Button } from '@/components/ui/button';
     import { cn } from '@/lib/utils';
+
+    function splitNeuroDesignBrief(raw) {
+      const s = String(raw ?? '');
+      const re = /<<<NEURODESIGN_PROMPT>>>\s*([\s\S]*?)\s*<<<END_NEURODESIGN_PROMPT>>>/i;
+      const m = s.match(re);
+      if (m?.[1]) {
+        const neuroPrompt = m[1].trim();
+        const display = s.replace(re, '').trim();
+        return { markdownSource: display || neuroPrompt, neuroPrompt };
+      }
+      const fence = s.match(/```neurodesign\s*([\s\S]*?)```/i);
+      if (fence?.[1]) {
+        const neuroPrompt = fence[1].trim();
+        const display = s.replace(/```neurodesign\s*[\s\S]*?```/i, '').trim();
+        return { markdownSource: display || neuroPrompt, neuroPrompt };
+      }
+      return { markdownSource: s, neuroPrompt: null };
+    }
+
+    const chatMarkdownComponents = {
+      p: ({ node, ...props }) => <p className="my-1 first:mt-0 last:mb-0 leading-snug" {...props} />,
+      ul: ({ node, ...props }) => <ul className="my-1.5 pl-4" {...props} />,
+      ol: ({ node, ...props }) => <ol className="my-1.5 pl-4" {...props} />,
+      li: ({ node, ...props }) => <li className="my-0.5 leading-snug" {...props} />,
+    };
 
     const StreamingMessage = ({ content, onFinished }) => {
       const [displayedContent, setDisplayedContent] = useState('');
@@ -44,10 +69,10 @@ import React, { useState, useEffect } from 'react';
         return () => clearInterval(interval);
       }, [content, onFinished]);
     
-      return <ReactMarkdown>{displayedContent}</ReactMarkdown>;
+      return <ReactMarkdown components={chatMarkdownComponents}>{displayedContent}</ReactMarkdown>;
     };
     
-    const AiChatMessage = ({ message, className, isStreaming, onStreamingFinished, aiName = 'ONE', suggestedPrompts, onSuggestedPromptClick }) => {
+    const AiChatMessage = ({ message, className, isStreaming, onStreamingFinished, aiName = 'ONE', suggestedPrompts, suggestedPromptsLoading, onSuggestedPromptClick, onApplyNeuroDesign }) => {
       const { role, content } = message;
       const isUser = role === 'user';
       const [copied, setCopied] = useState(false);
@@ -74,10 +99,19 @@ import React, { useState, useEffect } from 'react';
       } else {
           renderableContent = String(content);
       }
+
+      const { markdownSource, neuroPrompt } = useMemo(
+        () => splitNeuroDesignBrief(renderableContent),
+        [renderableContent]
+      );
     
       const handleCopy = () => {
         if (typeof renderableContent !== 'string') return;
-        navigator.clipboard.writeText(renderableContent);
+        const toCopy =
+          neuroPrompt && markdownSource
+            ? [markdownSource, neuroPrompt].filter(Boolean).join('\n\n---\nBrief NeuroDesign:\n')
+            : renderableContent;
+        navigator.clipboard.writeText(toCopy);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       };
@@ -88,7 +122,7 @@ import React, { useState, useEffect } from 'react';
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
           className={cn(
-            'flex items-start gap-4', 
+            'flex items-start gap-3',
             isUser ? 'justify-end' : '',
             className
           )}
@@ -98,7 +132,12 @@ import React, { useState, useEffect } from 'react';
               <AvatarFallback className="bg-primary text-primary-foreground"><Bot size={20} /></AvatarFallback>
             </Avatar>
           )}
-          <div className={cn('flex flex-col gap-1 max-w-2xl', isUser ? 'items-end' : '')}>
+          <div
+            className={cn(
+              'flex flex-col gap-0.5 min-w-0',
+              isUser ? 'items-end max-w-[min(100%,28rem)]' : 'flex-1 max-w-full'
+            )}
+          >
             {!isUser && (
               <span className="text-xs font-medium text-muted-foreground">{aiName}</span>
             )}
@@ -134,28 +173,40 @@ import React, { useState, useEffect } from 'react';
             )}
             <div 
               className={cn(
-                'p-4 rounded-2xl shadow-sm prose dark:prose-invert prose-sm max-w-none break-words select-text',
-                isUser ? 'bg-primary text-white rounded-br-none' : 'bg-muted/50 text-foreground rounded-bl-none border'
+                'px-3 py-2.5 rounded-xl shadow-sm prose dark:prose-invert prose-sm max-w-none break-words select-text leading-snug',
+                'prose-p:my-1 prose-headings:mt-2 prose-headings:mb-1 prose-headings:first:mt-0',
+                'prose-ul:my-1 prose-ol:my-1 prose-li:my-0.5 prose-hr:my-3',
+                isUser ? 'bg-primary text-white rounded-br-none prose-invert' : 'bg-muted/50 text-foreground rounded-bl-none border'
               )}
               style={{ whiteSpace: 'pre-wrap' }}
             >
               {isStreaming ? (
                 <StreamingMessage content={renderableContent} onFinished={onStreamingFinished} />
               ) : (
-                <ReactMarkdown
-                  components={{
-                    p: ({ node, ...props }) => <p className="my-2 first:mt-0 last:mb-0" {...props} />,
-                    ul: ({ node, ...props }) => <ul className="my-2" {...props} />,
-                    ol: ({ node, ...props }) => <ol className="my-2" {...props} />,
-                    li: ({ node, ...props }) => <li className="my-1" {...props} />,
-                  }}
-                >
-                  {renderableContent}
+                <ReactMarkdown components={chatMarkdownComponents}>
+                  {markdownSource}
                 </ReactMarkdown>
               )}
             </div>
+            {!isUser && neuroPrompt && !isStreaming && typeof onApplyNeuroDesign === 'function' && (
+              <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 space-y-1.5">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="w-full sm:w-auto gap-2 font-medium"
+                  onClick={() => onApplyNeuroDesign(neuroPrompt)}
+                >
+                  <ImageIcon className="h-4 w-4 shrink-0" />
+                  Aplicar ao NeuroDesign
+                </Button>
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Copia o brief profissional, abre o NeuroDesign e preenche <strong className="text-foreground">Preencher com IA</strong>. Depois use <strong className="text-foreground">Preencher campos</strong>.
+                </p>
+              </div>
+            )}
             {!isUser && (
-              <div className="flex items-center gap-1 flex-wrap mt-1">
+              <div className="flex items-center gap-1 flex-wrap mt-0.5">
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="Áudio"><Volume2 className="h-4 w-4" /></Button>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="Download"><Download className="h-4 w-4" /></Button>
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="Copiar" onClick={handleCopy}>
@@ -171,21 +222,35 @@ import React, { useState, useEffect } from 'react';
                 <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" title="Não útil"><ThumbsDown className="h-4 w-4" /></Button>
               </div>
             )}
-            {!isUser && Array.isArray(suggestedPrompts) && suggestedPrompts.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {suggestedPrompts.map((text, i) => (
-                  <Button
-                    key={i}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 text-xs h-8"
-                    onClick={() => onSuggestedPromptClick?.(text)}
-                  >
-                    <Lightbulb className="h-3.5 w-3.5" />
-                    {text}
-                  </Button>
-                ))}
+            {!isUser && suggestedPromptsLoading && (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
+                <span className="text-xs text-muted-foreground">Gerando próximos passos com a IA…</span>
+              </div>
+            )}
+            {!isUser && !suggestedPromptsLoading && Array.isArray(suggestedPrompts) && suggestedPrompts.length > 0 && (
+              <div className="flex flex-col gap-1.5 mt-2">
+                <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Continuar com a IA</span>
+                <div className="flex flex-wrap gap-2">
+                  {suggestedPrompts.map((item, i) => {
+                    const label = typeof item === 'string' ? item : (item.label || item.prompt || '');
+                    const prompt = typeof item === 'string' ? item : (item.prompt || item.label || '');
+                    return (
+                      <Button
+                        key={i}
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-1.5 text-xs h-auto min-h-8 py-1.5 max-w-full text-left justify-start"
+                        title={prompt}
+                        onClick={() => onSuggestedPromptClick?.(prompt)}
+                      >
+                        <Lightbulb className="h-3.5 w-3.5 shrink-0" />
+                        <span className="line-clamp-2 sm:max-w-[20rem]">{label}</span>
+                      </Button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -203,12 +268,12 @@ import React, { useState, useEffect } from 'react';
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="flex items-start gap-4"
+        className="flex items-start gap-3"
       >
         <Avatar className="w-9 h-9 border-2 border-primary/50">
           <AvatarFallback className="bg-primary text-primary-foreground"><Bot size={20} /></AvatarFallback>
         </Avatar>
-        <div className="p-4 rounded-2xl bg-input border flex items-center space-x-2">
+        <div className="px-3 py-2.5 rounded-xl bg-input border flex items-center space-x-2">
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
           <span className="text-sm text-muted-foreground">Pensando...</span>
         </div>

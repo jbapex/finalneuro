@@ -1,9 +1,10 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
@@ -13,6 +14,7 @@ import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
 import { ZoneGrid } from '@/components/neurodesign/ZoneGrid';
 import { Sparkles, Copy, Upload, X } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
+import { neuroDesignDefaultConfig } from '@/lib/neurodesign/defaultConfig';
 
 const DIMENSIONS = [
   { value: '1:1', label: '1:1 Feed' },
@@ -65,15 +67,64 @@ function normalizeHexInput(raw) {
   return raw;
 }
 
-import { neuroDesignDefaultConfig } from '@/lib/neurodesign/defaultConfig';
+/** Texto para o LLM do wizard: dados do cliente + documentos de contexto. */
+function formatWizardClientContextForWizard(detail) {
+  if (!detail) return '';
+  const ctxs = detail.client_contexts;
+  const { client_contexts: _omit, ...rest } = detail;
+  const lines = [
+    '--- Contexto do cliente (marca, tom, público; use nas perguntas e no prompt final) ---',
+    JSON.stringify(rest, null, 2),
+  ];
+  if (Array.isArray(ctxs) && ctxs.length > 0) {
+    lines.push('Documentos de contexto:');
+    for (const c of ctxs) {
+      const name = String(c?.name || 'Contexto').trim();
+      const content = String(c?.content || '').trim();
+      lines.push(`### ${name}\n${content}`);
+    }
+  }
+  return lines.join('\n\n');
+}
+
+/** Conteúdo user message: string ou multimodal (visão) para generic-ai-chat. */
+function buildWizardMessageContent(text, imagePublicUrl) {
+  const t = String(text || '');
+  const url = String(imagePublicUrl || '').trim();
+  if (!url) return t;
+  return [
+    { type: 'text', text: t },
+    { type: 'image_url', image_url: { url } },
+  ];
+}
 
 const defaultConfig = neuroDesignDefaultConfig;
 
-const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate, isGenerating, onFillFromPrompt, hasLlmConnection, isFillingFromPrompt }) => {
+const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate, isGenerating, onFillFromPrompt, hasLlmConnection, isFillingFromPrompt, selectedLlmId, seedFillPrompt }) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [localConfig, setLocalConfig] = useState(config || defaultConfig());
   const [fillPromptInput, setFillPromptInput] = useState('');
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(0);
+  const [wizardLoading, setWizardLoading] = useState(false);
+  const [wizardGenerating, setWizardGenerating] = useState(false);
+  const [wizardSeed, setWizardSeed] = useState('');
+  const [wizardQuestions, setWizardQuestions] = useState([
+    { question: '', options: [] },
+    { question: '', options: [] },
+    { question: '', options: [] },
+    { question: '', options: [] },
+  ]);
+  const [wizardAnswers, setWizardAnswers] = useState(['', '', '', '']);
+  const [wizardClientId, setWizardClientId] = useState('');
+  const [wizardClients, setWizardClients] = useState([]);
+  const [wizardClientsLoading, setWizardClientsLoading] = useState(false);
+  const [wizardClientDetail, setWizardClientDetail] = useState(null);
+  const [wizardClientLoading, setWizardClientLoading] = useState(false);
+  const [wizardRefImageUrl, setWizardRefImageUrl] = useState('');
+  const [wizardRefUploading, setWizardRefUploading] = useState(false);
+  const wizardRefInputRef = useRef(null);
   const [isUploadingStyleRefs, setIsUploadingStyleRefs] = useState(false);
   const styleRefsInputRef = useRef(null);
   const [logosByProvider, setLogosByProvider] = useState({});
@@ -88,6 +139,12 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
     }
     setLocalConfig(next);
   }, [config]);
+
+  React.useEffect(() => {
+    if (seedFillPrompt !== undefined && seedFillPrompt !== null && String(seedFillPrompt).trim()) {
+      setFillPromptInput(String(seedFillPrompt).trim());
+    }
+  }, [seedFillPrompt]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -110,6 +167,102 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
       cancelled = true;
     };
   }, []);
+
+  React.useEffect(() => {
+    if (!wizardOpen || !user?.id) return;
+    let cancelled = false;
+    setWizardClientsLoading(true);
+    (async () => {
+      const { data, error } = await supabase.from('clients').select('id, name').eq('user_id', user.id).order('name');
+      if (!cancelled) {
+        setWizardClientsLoading(false);
+        if (!error && Array.isArray(data)) setWizardClients(data);
+        else setWizardClients([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wizardOpen, user?.id]);
+
+  React.useEffect(() => {
+    if (!wizardClientId || !user?.id) {
+      setWizardClientDetail(null);
+      setWizardClientLoading(false);
+      return;
+    }
+    const id = parseInt(wizardClientId, 10);
+    if (Number.isNaN(id)) {
+      setWizardClientDetail(null);
+      setWizardClientLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setWizardClientLoading(true);
+    (async () => {
+      const { data, error } = await supabase
+        .from('clients')
+        .select('*, client_contexts(name, content)')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+      if (cancelled) return;
+      setWizardClientLoading(false);
+      if (!error && data) setWizardClientDetail(data);
+      else {
+        setWizardClientDetail(null);
+        if (error) {
+          toast({ title: 'Cliente', description: error.message || 'Não foi possível carregar o contexto.', variant: 'destructive' });
+          setWizardClientId('');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [wizardClientId, user?.id, toast]);
+
+  const handleWizardOpenChange = useCallback((open) => {
+    setWizardOpen(open);
+    if (!open) {
+      setWizardClientId('');
+      setWizardClientDetail(null);
+      setWizardClientLoading(false);
+      setWizardRefImageUrl('');
+      setWizardRefUploading(false);
+      if (wizardRefInputRef.current) wizardRefInputRef.current.value = '';
+    }
+  }, []);
+
+  const handleWizardRefImageChange = useCallback(
+    async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      if (!project?.id || !user) {
+        toast({
+          title: 'Não foi possível enviar',
+          description: !project?.id ? 'Selecione uma galeria primeiro.' : 'Faça login.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setWizardRefUploading(true);
+      try {
+        const url = await uploadNeuroDesignFile(user.id, project.id, 'wizard_ref', file);
+        setWizardRefImageUrl(url);
+        toast({
+          title: 'Imagem de referência',
+          description: 'Anexada ao wizard. Use um modelo com visão (ex.: GPT-4o, Gemini com imagem).',
+        });
+      } catch (err) {
+        toast({ title: 'Erro no upload', description: err?.message || String(err), variant: 'destructive' });
+      } finally {
+        setWizardRefUploading(false);
+        if (wizardRefInputRef.current) wizardRefInputRef.current.value = '';
+      }
+    },
+    [project?.id, user, toast]
+  );
 
   const update = (key, value) => {
     const next = { ...localConfig, [key]: value };
@@ -194,6 +347,156 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
     update('visual_attributes', { ...localConfig.visual_attributes, style_tags: next });
   };
 
+  const parseWizardQuestions = (raw) => {
+    if (!raw || typeof raw !== 'string') return [];
+    const clean = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+    try {
+      const parsed = JSON.parse(clean);
+      const list = Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.questions) ? parsed.questions : []);
+      return list
+        .map((q) => ({
+          question: String(q?.question || '').trim(),
+          options: Array.isArray(q?.options) ? q.options.map((o) => String(o).trim()).filter(Boolean).slice(0, 6) : [],
+        }))
+        .filter((q) => q.question);
+    } catch {
+      return [];
+    }
+  };
+
+  const buildFallbackWizardQuestions = (seed) => ([
+    { question: `Qual o objetivo principal da arte para "${seed}"?`, options: ['Conversão', 'Autoridade', 'Engajamento'] },
+    { question: 'Qual oferta/mensagem principal precisa ser destaque?', options: [] },
+    { question: 'Qual público e tom visual deseja?', options: ['Premium', 'Moderno', 'Direto', 'Minimalista'] },
+    { question: 'Qual CTA final e restrições obrigatórias?', options: ['Comprar agora', 'Saiba mais', 'Fale no WhatsApp'] },
+  ]);
+
+  const startWizardPlanner = async () => {
+    const seed = wizardSeed.trim();
+    if (!seed || !selectedLlmId) return;
+    const clientBlock = formatWizardClientContextForWizard(wizardClientDetail);
+    const seedWithCtx = clientBlock ? `${clientBlock}\n\n--- Pedido inicial ---\n${seed}` : seed;
+    const visionHint = wizardRefImageUrl
+      ? '\n\n(Uma imagem de referência foi anexada: use estilo, cores e composição ao formular as perguntas.)'
+      : '';
+    setWizardLoading(true);
+    setWizardStep(0);
+    setWizardAnswers(['', '', '', '']);
+    try {
+      const planner = await supabase.functions.invoke('generic-ai-chat', {
+        body: JSON.stringify({
+          session_id: null,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Crie 4 perguntas para refinamento de brief de design. Retorne APENAS JSON válido: {"questions":[{"question":"...","options":["..."]}]}. Se houver imagem anexada, considere o visual nas perguntas.',
+            },
+            {
+              role: 'user',
+              content: buildWizardMessageContent(`Pedido inicial:\n${seedWithCtx}${visionHint}`, wizardRefImageUrl),
+            },
+          ],
+          llm_integration_id: selectedLlmId,
+          is_user_connection: true,
+          context: 'neurodesign_prompt_creator_wizard',
+        }),
+      });
+      const plannerOut = String(planner?.data?.response || planner?.data?.content || '');
+      let questions = parseWizardQuestions(plannerOut);
+      if (questions.length < 4) {
+        const repaired = await supabase.functions.invoke('generic-ai-chat', {
+          body: JSON.stringify({
+            session_id: null,
+            messages: [
+              {
+                role: 'system',
+                content: 'Converta a saída para JSON válido no formato {"questions":[{"question":"...","options":["..."]}]} com EXATAMENTE 4 perguntas.',
+              },
+              {
+                role: 'user',
+                content: buildWizardMessageContent(`Pedido:\n${seedWithCtx}\n\nSaída anterior:\n${plannerOut}`, wizardRefImageUrl),
+              },
+            ],
+            llm_integration_id: selectedLlmId,
+            is_user_connection: true,
+            context: 'neurodesign_prompt_creator_wizard_repair',
+          }),
+        });
+        const repairedOut = String(repaired?.data?.response || repaired?.data?.content || '');
+        const repairedQuestions = parseWizardQuestions(repairedOut);
+        if (repairedQuestions.length >= 4) questions = repairedQuestions;
+      }
+      const finalQuestions = (questions.length >= 4 ? questions.slice(0, 4) : buildFallbackWizardQuestions(seed))
+        .map((q) => ({ question: q.question, options: q.options || [] }));
+      setWizardQuestions(finalQuestions);
+    } catch {
+      setWizardQuestions(buildFallbackWizardQuestions(seed));
+    } finally {
+      setWizardLoading(false);
+    }
+  };
+
+  const generateWizardPrompt = async () => {
+    const seed = wizardSeed.trim();
+    if (!seed) return;
+    if (wizardAnswers.some((a) => !String(a || '').trim())) return;
+    const clientBlock = formatWizardClientContextForWizard(wizardClientDetail);
+    const seedWithCtx = clientBlock ? `${clientBlock}\n\n--- Pedido inicial ---\n${seed}` : seed;
+    const visionHint = wizardRefImageUrl
+      ? '\n\n(Imagem de referência anexada: alinhe estilo, cores, composição e hierarquia visual no prompt textual.)'
+      : '';
+    setWizardGenerating(true);
+    try {
+      const qa = wizardQuestions
+        .map((q, idx) => `Q${idx + 1}: ${q.question}\nA${idx + 1}: ${wizardAnswers[idx] || ''}`)
+        .join('\n\n');
+      const userContent = buildWizardMessageContent(
+        `Pedido inicial:\n${seedWithCtx}\n\nRespostas do wizard:\n${qa}${visionHint}`,
+        wizardRefImageUrl
+      );
+      const { data, error } = await supabase.functions.invoke('generic-ai-chat', {
+        body: JSON.stringify({
+          session_id: null,
+          messages: [
+            {
+              role: 'system',
+              content:
+                'Você é um especialista em criação de prompts para geração de imagens. Gere um prompt final detalhado e objetivo para o NeuroDesign. Se houver imagem anexada, incorpore fielmente o que for visível (estilo, paleta, enquadramento) no texto do prompt.',
+            },
+            {
+              role: 'user',
+              content: userContent,
+            },
+          ],
+          llm_integration_id: selectedLlmId,
+          is_user_connection: true,
+          context: 'neurodesign_prompt_creator',
+        }),
+      });
+      if (error) throw new Error(error.message || String(error));
+      if (data?.error) throw new Error(data.error);
+      const finalPrompt = String(data?.response || data?.content || '').trim();
+      if (!finalPrompt) throw new Error('A IA não retornou prompt final.');
+      setFillPromptInput(finalPrompt);
+      setWizardOpen(false);
+      setWizardStep(0);
+      setWizardSeed('');
+      setWizardQuestions([
+        { question: '', options: [] },
+        { question: '', options: [] },
+        { question: '', options: [] },
+        { question: '', options: [] },
+      ]);
+      setWizardAnswers(['', '', '', '']);
+      toast({ title: 'Prompt criado', description: 'Prompt inserido em "Preencher com IA".' });
+    } catch (e) {
+      toast({ title: 'Erro no criador de prompt', description: e?.message || String(e), variant: 'destructive' });
+    } finally {
+      setWizardGenerating(false);
+    }
+  };
+
   if (!project) {
     return (
       <div className="p-6 text-muted-foreground text-sm">
@@ -228,8 +531,21 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
           >
             {isFillingFromPrompt ? 'Preenchendo…' : 'Preencher campos'}
           </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full"
+            disabled={!hasLlmConnection || !selectedLlmId}
+            onClick={() => setWizardOpen(true)}
+          >
+            Criador de Prompt (Wizard)
+          </Button>
           {!hasLlmConnection && (
             <p className="text-xs text-amber-500">Configure uma conexão de modelo de linguagem em Minha IA para usar esta função.</p>
+          )}
+          {hasLlmConnection && !selectedLlmId && (
+            <p className="text-xs text-amber-500">Defina uma conexão LLM padrão em Minha IA para usar o wizard.</p>
           )}
         </div>
       )}
@@ -394,13 +710,29 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
         <p className="text-xs text-muted-foreground mt-1">2K e 4K geram imagem em maior resolução; podem consumir mais cota da API. 4K pode não estar disponível em todos os modelos/planos.</p>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between">
-          <Label>Texto na imagem</Label>
-          <Switch checked={!!localConfig.text_enabled} onCheckedChange={(v) => update('text_enabled', v)} />
+      <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <Label className="text-sm font-semibold text-foreground">Texto na imagem</Label>
+            <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+              Ligue para configurar títulos, CTA, gradiente e formas de texto na arte.
+            </p>
+          </div>
+          <Switch
+            checked={!!localConfig.text_enabled}
+            onCheckedChange={(v) => update('text_enabled', v)}
+            className="shrink-0 data-[state=unchecked]:bg-muted-foreground/40"
+            aria-label="Ativar texto na imagem"
+          />
         </div>
+        {!localConfig.text_enabled && (
+          <p className="text-xs text-amber-600 dark:text-amber-500/90 rounded-md bg-amber-500/10 border border-amber-500/25 px-2.5 py-2">
+            Com esta opção desligada, os campos de texto (incluindo <strong>Gradiente no texto</strong>) ficam ocultos.
+            Ative o interruptor acima para ver todas as opções.
+          </p>
+        )}
         {localConfig.text_enabled && (
-          <div className="mt-2 space-y-4">
+          <div className="mt-1 pt-2 border-t border-border space-y-4">
             <div>
               <Label className="text-xs mb-1 block">Modo</Label>
               <Select value={localConfig.text_mode || 'structured'} onValueChange={(v) => update('text_mode', v)}>
@@ -588,9 +920,14 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Switch checked={!!localConfig.text_gradient} onCheckedChange={(v) => update('text_gradient', v)} />
-              <Label className="text-xs">Gradiente no texto</Label>
+            <div className="flex items-center gap-2 rounded-md border border-border/80 bg-background/50 px-2 py-1.5">
+              <Switch
+                checked={!!localConfig.text_gradient}
+                onCheckedChange={(v) => update('text_gradient', v)}
+                className="data-[state=unchecked]:bg-muted-foreground/40"
+                aria-label="Gradiente no texto"
+              />
+              <Label className="text-xs font-medium cursor-pointer">Gradiente no texto</Label>
             </div>
               </>
             )}
@@ -848,6 +1185,192 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
           <Copy className="h-4 w-4" />
         </Button>
       </div>
+      <Dialog open={wizardOpen} onOpenChange={handleWizardOpenChange}>
+        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Criador de Prompt (Wizard)</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Cliente (opcional)</Label>
+              <Select
+                value={wizardClientId ? String(wizardClientId) : '__none__'}
+                onValueChange={(v) => setWizardClientId(v === '__none__' ? '' : v)}
+                disabled={wizardLoading || wizardGenerating}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Nenhum" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Nenhum</SelectItem>
+                  {wizardClients.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {wizardClientLoading && (
+                <p className="text-xs text-muted-foreground mt-1">Carregando contexto do cliente…</p>
+              )}
+              {wizardOpen && !wizardClientsLoading && wizardClients.length === 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Nenhum cliente cadastrado. Crie em{' '}
+                  <Link to="/clientes" className="underline text-primary">
+                    Clientes
+                  </Link>{' '}
+                  para usar contexto aqui.
+                </p>
+              )}
+            </div>
+            <div>
+              <Label>Imagem de referência (opcional)</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                A IA enxerga a imagem nas chamadas do wizard. Use conexão com modelo de visão (ex.: GPT-4o, Gemini com imagem).
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <input
+                  ref={wizardRefInputRef}
+                  type="file"
+                  accept="image/jpeg,image/jpg,image/png,image/webp,image/gif"
+                  className="hidden"
+                  onChange={handleWizardRefImageChange}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={wizardRefUploading || wizardLoading || wizardGenerating}
+                  onClick={() => wizardRefInputRef.current?.click()}
+                >
+                  <Upload className="h-3.5 w-3.5 mr-1.5" />
+                  {wizardRefUploading ? 'Enviando…' : 'Escolher imagem'}
+                </Button>
+                {wizardRefImageUrl ? (
+                  <>
+                    <img src={wizardRefImageUrl} alt="" className="h-12 w-12 rounded border object-cover" />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={() => setWizardRefImageUrl('')}
+                      title="Remover referência"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+            <div>
+              <Label>Pedido inicial</Label>
+              <Textarea
+                value={wizardSeed}
+                onChange={(e) => setWizardSeed(e.target.value)}
+                placeholder="Ex.: Criar arte para campanha de tráfego para clínica estética..."
+                className="mt-1 min-h-[80px]"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-2"
+                onClick={startWizardPlanner}
+                disabled={
+                  !wizardSeed.trim() ||
+                  !selectedLlmId ||
+                  wizardLoading ||
+                  wizardGenerating ||
+                  wizardClientLoading
+                }
+              >
+                {wizardLoading ? 'Gerando perguntas...' : 'Iniciar wizard'}
+              </Button>
+            </div>
+            <div>
+              <Label>Pergunta {wizardStep + 1} de 4</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                {wizardQuestions[wizardStep]?.question || 'Clique em "Iniciar wizard" para montar perguntas personalizadas.'}
+              </p>
+              {(wizardQuestions[wizardStep]?.options || []).length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {wizardQuestions[wizardStep].options.map((opt) => (
+                    <Button
+                      key={opt}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setWizardAnswers((prev) => {
+                          const next = [...prev];
+                          next[wizardStep] = opt;
+                          return next;
+                        })
+                      }
+                      className="h-7"
+                    >
+                      {opt}
+                    </Button>
+                  ))}
+                </div>
+              )}
+              <Textarea
+                value={wizardAnswers[wizardStep] || ''}
+                onChange={(e) =>
+                  setWizardAnswers((prev) => {
+                    const next = [...prev];
+                    next[wizardStep] = e.target.value;
+                    return next;
+                  })
+                }
+                placeholder="Sua resposta..."
+                className="mt-1 min-h-[84px]"
+                disabled={wizardLoading || wizardGenerating || !wizardQuestions[wizardStep]?.question}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setWizardStep((s) => Math.max(0, s - 1))}
+                disabled={wizardStep === 0 || wizardGenerating || wizardLoading || wizardClientLoading}
+              >
+                Voltar
+              </Button>
+              {wizardStep < 3 ? (
+                <Button
+                  type="button"
+                  onClick={() => setWizardStep((s) => Math.min(3, s + 1))}
+                  disabled={
+                    !wizardSeed.trim() ||
+                    !String(wizardAnswers[wizardStep] || '').trim() ||
+                    wizardGenerating ||
+                    wizardLoading ||
+                    wizardClientLoading ||
+                    !wizardQuestions[wizardStep]?.question
+                  }
+                >
+                  Próxima
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={generateWizardPrompt}
+                  disabled={
+                    wizardGenerating ||
+                    wizardLoading ||
+                    wizardClientLoading ||
+                    !wizardSeed.trim() ||
+                    wizardAnswers.some((a) => !String(a || '').trim())
+                  }
+                >
+                  {wizardGenerating ? 'Gerando...' : 'Gerar prompt final'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

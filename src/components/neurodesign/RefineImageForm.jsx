@@ -1,10 +1,17 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { Loader2, Sparkles, Upload, X, Crop, Type, Eraser, ImageMinus, ImageIcon, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
+import { supabase } from '@/lib/customSupabaseClient';
+import { cn } from '@/lib/utils';
+
+const ND_REFINE_ACTION_KEY = 'custom_nd_refine_action';
+const ND_REFINE_META_KEY = 'custom_nd_refine_meta';
 
 const REFINE_DIMENSIONS = [
   { value: '1:1', label: '1:1 Feed' },
@@ -41,7 +48,9 @@ const SELECTION_FONT_STYLES = [
 /**
  * Formulário de refino de imagem: preview com seleção de região, ações (add text, remove text, etc.),
  * uploads e opções avançadas. Faz uploads e chama onRefine(payload) com o payload completo para a API.
- * Props: imageUrl, projectId, user { id }, onRefine(payload), disabled?, compact?, hasImageConnection?, renderPreviewActions?
+ * Props: imageUrl, projectId, user { id }, onRefine(payload), disabled?, compact?, hasImageConnection?,
+ * imageConnections + refineConnectionSelectValue + onRefineConnectionChange + builderInheritHint = seletor de conexão no refinamento.
+ * previewExpiryMeta = { text, isExpired, isSoon } para exibir contador de expiração sobre a imagem principal.
  */
 export default function RefineImageForm({
   imageUrl,
@@ -51,9 +60,15 @@ export default function RefineImageForm({
   disabled = false,
   compact = false,
   hasImageConnection = true,
+  imageConnections = [],
+  refineConnectionSelectValue,
+  onRefineConnectionChange,
+  builderInheritHint = '',
+  previewExpiryMeta = null,
   renderPreviewActions,
 }) {
   const { toast } = useToast();
+  const [logosByProvider, setLogosByProvider] = useState({});
   const [refineInstruction, setRefineInstruction] = useState('');
   const [refineDimensions, setRefineDimensions] = useState('1:1');
   const [refineImageSize, setRefineImageSize] = useState('1K');
@@ -79,6 +94,67 @@ export default function RefineImageForm({
   const addImageInputRef = useRef(null);
   const [addImageFile, setAddImageFile] = useState(null);
   const [addImagePreviewUrl, setAddImagePreviewUrl] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadLogos = async () => {
+      try {
+        const { data, error } = await supabase.from('llm_logos').select('provider, logo_url');
+        if (!error && data && !cancelled) {
+          const map = {};
+          data.forEach((row) => {
+            if (row?.provider && row?.logo_url) map[row.provider] = row.logo_url;
+          });
+          setLogosByProvider(map);
+        }
+      } catch {
+        // falha silenciosa
+      }
+    };
+    loadLogos();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    try {
+      const savedAction = localStorage.getItem(ND_REFINE_ACTION_KEY);
+      if (savedAction) setSelectionAction(savedAction);
+      const savedMeta = localStorage.getItem(ND_REFINE_META_KEY);
+      if (savedMeta) {
+        const meta = JSON.parse(savedMeta);
+        if (meta && typeof meta === 'object') {
+          if (meta.text_new) setSelectionText(String(meta.text_new));
+          if (meta.text_font) setSelectionFont(String(meta.text_font));
+          if (meta.text_style) setSelectionFontStyle(String(meta.text_style));
+        }
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ND_REFINE_ACTION_KEY, String(selectionAction || ''));
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [selectionAction]);
+
+  useEffect(() => {
+    try {
+      const meta = {
+        text_new: selectionText || '',
+        text_font: selectionFont || '',
+        text_style: selectionFontStyle || '',
+      };
+      localStorage.setItem(ND_REFINE_META_KEY, JSON.stringify(meta));
+    } catch {
+      // ignore localStorage errors
+    }
+  }, [selectionText, selectionFont, selectionFontStyle]);
 
   const clearReferenceArt = () => {
     setReferenceArtFile(null);
@@ -340,6 +416,7 @@ export default function RefineImageForm({
 
   const isBusy = disabled || isUploadingRefine;
   const previewHeight = compact ? 'max-h-[280px] min-h-[200px]' : 'min-h-[200px] max-h-[40vh]';
+  const showConnectionSelector = typeof onRefineConnectionChange === 'function' && refineConnectionSelectValue != null;
 
   if (!imageUrl) {
     return (
@@ -351,6 +428,49 @@ export default function RefineImageForm({
 
   return (
     <div className="flex flex-col gap-4">
+      {showConnectionSelector && (
+        <div className="rounded-lg border border-border bg-muted/25 p-2 space-y-1">
+          <div>
+            <Label className="text-xs font-semibold text-foreground">Conexão (refinamento)</Label>
+          </div>
+          <Select value={refineConnectionSelectValue} onValueChange={onRefineConnectionChange}>
+            <SelectTrigger
+              className="h-9 w-full bg-muted border-border text-foreground text-sm"
+              aria-label="Conexão de imagem para refinamento"
+            >
+              <SelectValue placeholder="Selecione uma conexão" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover text-popover-foreground border-border">
+              <SelectItem value="__inherit__">
+                <span className="font-medium">Seguir builder</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  {builderInheritHint || '—'}
+                </span>
+              </SelectItem>
+              <SelectItem value="none">Usar mock (sem conexão)</SelectItem>
+              {imageConnections.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  <div className="flex items-center gap-2">
+                    {logosByProvider[c.provider] && (
+                      <img src={logosByProvider[c.provider]} alt="" className="h-4 w-4 rounded-sm object-contain" />
+                    )}
+                    <span>{c.name}</span>
+                    {c.provider && <span className="text-xs text-muted-foreground">({c.provider})</span>}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {imageConnections.length === 0 && (
+            <p className="text-xs text-amber-600 dark:text-amber-500/90">
+              Nenhuma conexão de imagem.{' '}
+              <Link to="/settings/ai" className="underline font-medium">
+                Configurações → Minha IA
+              </Link>
+            </p>
+          )}
+        </div>
+      )}
       {/* Preview com seleção de região */}
       <div
         className={`relative rounded-lg border border-border bg-muted/30 flex items-center justify-center overflow-hidden ${previewHeight}`}
@@ -381,6 +501,21 @@ export default function RefineImageForm({
               </Button>
             )}
           </div>
+          {previewExpiryMeta && (
+            <div className="absolute bottom-2 left-2 right-2 pointer-events-none flex justify-center z-10">
+              <span
+                className={cn(
+                  'text-xs font-semibold px-2 py-1 rounded-md border shadow-sm max-w-full truncate',
+                  previewExpiryMeta.isSoon
+                    ? 'bg-red-500/15 text-red-700 border-red-500/35 dark:text-red-300'
+                    : 'bg-background/85 text-foreground border-border/60 backdrop-blur-sm'
+                )}
+                title={previewExpiryMeta.isExpired ? 'Expirado' : `Expira em ~${previewExpiryMeta.text}`}
+              >
+                {previewExpiryMeta.isExpired ? 'Expirado' : `-${previewExpiryMeta.text}`}
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <p className="text-xs text-muted-foreground">Arraste na imagem para selecionar a região a refinar.</p>

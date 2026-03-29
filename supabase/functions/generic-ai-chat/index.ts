@@ -5,6 +5,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { enqueueUserGoogle } from "../_shared/googleUserQueue.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,7 +15,8 @@ const corsHeaders = {
 /** Timeout da chamada à API de IA (ms). 5 min. O Kong/gateway precisa ter timeout >= este valor. */
 const LLM_REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
 
-type Message = { role: string; content: string };
+/** Conteúdo texto ou multimodal (OpenAI: array com type text / image_url). */
+type Message = { role: string; content: string | Array<Record<string, unknown>> };
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -113,6 +115,7 @@ serve(async (req) => {
       );
     }
 
+    const runChatCompletion = async (): Promise<Response> => {
     // Google Gemini: endpoint compatível com OpenAI é /v1beta/openai/chat/completions
     const chatUrl = isGoogle
       ? `${apiUrl}/v1beta/openai/chat/completions`
@@ -123,7 +126,13 @@ serve(async (req) => {
 
     const bodyPayload: Record<string, unknown> = {
       model,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      messages: messages.map((m) => {
+        const c = m.content;
+        if (Array.isArray(c)) {
+          return { role: m.role, content: c };
+        }
+        return { role: m.role, content: typeof c === "string" ? c : String(c ?? "") };
+      }),
       stream: false,
     };
     // Opção B: para Google, tentar pedir raciocínio; se API retornar 4xx, refazer sem o parâmetro (não devolver 502)
@@ -301,6 +310,12 @@ serve(async (req) => {
       JSON.stringify(payload),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
+    };
+
+    if (isUserConnection && isGoogle) {
+      return await enqueueUserGoogle(user.id, runChatCompletion);
+    }
+    return await runChatCompletion();
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return new Response(

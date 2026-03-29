@@ -15,11 +15,27 @@ import React, { useState, useEffect } from 'react';
         name: z.string().min(2, { message: 'O nome deve ter pelo menos 2 caracteres.' }),
         email: z.string().email({ message: 'Por favor, insira um email válido.' }),
     });
+
+    const passwordSchema = z
+        .object({
+            newPassword: z.string().min(6, { message: 'A senha deve ter pelo menos 6 caracteres.' }),
+            confirmPassword: z.string(),
+        })
+        .refine((data) => data.newPassword === data.confirmPassword, {
+            message: 'As senhas não coincidem.',
+            path: ['confirmPassword'],
+        });
     
     const ProfileTab = () => {
         const { user, profile, refreshProfile } = useAuth();
         const { toast } = useToast();
         const [isSubmitting, setIsSubmitting] = useState(false);
+        const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+
+        const passwordForm = useForm({
+            resolver: zodResolver(passwordSchema),
+            defaultValues: { newPassword: '', confirmPassword: '' },
+        });
     
         const form = useForm({
             resolver: zodResolver(profileSchema),
@@ -79,12 +95,32 @@ import React, { useState, useEffect } from 'react';
     
             setIsSubmitting(false);
         };
+
+        const onPasswordSubmit = async (values) => {
+            setPasswordSubmitting(true);
+            const { error } = await supabase.auth.updateUser({ password: values.newPassword });
+            if (error) {
+                toast({
+                    title: 'Erro ao alterar senha',
+                    description: error.message,
+                    variant: 'destructive',
+                });
+            } else {
+                passwordForm.reset({ newPassword: '', confirmPassword: '' });
+                toast({
+                    title: 'Senha atualizada',
+                    description: 'Sua nova senha já está em vigor.',
+                });
+            }
+            setPasswordSubmitting(false);
+        };
     
         if (!user || !profile) {
             return <div>Carregando perfil...</div>;
         }
     
         return (
+            <>
             <Card>
                 <CardHeader>
                     <CardTitle>Perfil</CardTitle>
@@ -126,6 +162,48 @@ import React, { useState, useEffect } from 'react';
                     </Form>
                 </CardContent>
             </Card>
+            <Card className="mt-6">
+                <CardHeader>
+                    <CardTitle>Alterar senha</CardTitle>
+                    <CardDescription>Defina uma nova senha para sua conta.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Form {...passwordForm}>
+                        <form onSubmit={passwordForm.handleSubmit(onPasswordSubmit)} className="space-y-6">
+                            <FormField
+                                control={passwordForm.control}
+                                name="newPassword"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Nova senha</FormLabel>
+                                        <FormControl>
+                                            <Input type="password" autoComplete="new-password" placeholder="••••••••" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={passwordForm.control}
+                                name="confirmPassword"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Confirmar nova senha</FormLabel>
+                                        <FormControl>
+                                            <Input type="password" autoComplete="new-password" placeholder="••••••••" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <Button type="submit" disabled={passwordSubmitting}>
+                                {passwordSubmitting ? 'Atualizando...' : 'Atualizar senha'}
+                            </Button>
+                        </form>
+                    </Form>
+                </CardContent>
+            </Card>
+            </>
         );
     };
     

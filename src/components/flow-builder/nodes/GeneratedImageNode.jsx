@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect, useCallback } from 'react';
+import React, { memo, useState, useEffect, useCallback, useRef } from 'react';
 import { Handle, Position } from 'reactflow';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,6 +7,9 @@ import { ImageIcon, Expand, Download, Pencil } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import RefineImageModal from '@/components/flow-builder/modals/RefineImageModal';
+import { getImageExpiryMeta } from '@/lib/neurodesign/imageExpiry';
+import { deleteNeurodesignGeneratedImageClient } from '@/lib/neurodesign/deleteGeneratedImageClient';
+import { cn } from '@/lib/utils';
 
 const GeneratedImageNode = memo(({ id, data }) => {
   const imageUrl = data?.imageUrl || '';
@@ -22,6 +25,75 @@ const GeneratedImageNode = memo(({ id, data }) => {
   const imageId = images[0]?.id;
   const canRefine = Boolean(imageUrl && projectId && runId && imageId);
   const onUpdateNodeData = data?.onUpdateNodeData;
+  const onRemoveNode = data?.onRemoveNode;
+  const createdAtForExpiry = data?.imageGeneratedAt || images[0]?.created_at;
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // Fluxos salvos costumam ter só `images: [{ id }]` sem `created_at`; a galeria do Neuro Designer lê do DB — espelhamos aqui.
+  const expiryFetchDoneForIdRef = useRef(null);
+  useEffect(() => {
+    if (!user?.id || !imageUrl) return;
+    if (!imageId || String(imageId).startsWith('temp-')) return;
+    if (!projectId) return;
+    if (data?.imageGeneratedAt || images[0]?.created_at) return;
+    if (typeof onUpdateNodeData !== 'function') return;
+    if (expiryFetchDoneForIdRef.current === imageId) return;
+    let cancelled = false;
+    (async () => {
+      const { data: row, error } = await supabase
+        .from('neurodesign_generated_images')
+        .select('created_at')
+        .eq('id', imageId)
+        .maybeSingle();
+      if (cancelled || error || !row?.created_at) return;
+      expiryFetchDoneForIdRef.current = imageId;
+      onUpdateNodeData(id, { imageGeneratedAt: row.created_at });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, imageUrl, imageId, projectId, id, onUpdateNodeData, data?.imageGeneratedAt, images[0]?.created_at]);
+
+  const expiryMeta = imageUrl ? getImageExpiryMeta(createdAtForExpiry, now) : null;
+
+  const deleteExpiredHandledRef = useRef(null);
+  useEffect(() => {
+    if (!expiryMeta?.isExpired || !imageUrl) return;
+    if (!imageId || String(imageId).startsWith('temp-')) return;
+    if (!createdAtForExpiry) return;
+    if (deleteExpiredHandledRef.current === imageId) return;
+    deleteExpiredHandledRef.current = imageId;
+    const record = {
+      id: imageId,
+      url: imageUrl,
+      thumbnail_url: images[0]?.thumbnail_url || imageUrl,
+      created_at: createdAtForExpiry,
+    };
+    (async () => {
+      const r = await deleteNeurodesignGeneratedImageClient(record);
+      if (!r.ok) {
+        deleteExpiredHandledRef.current = null;
+        return;
+      }
+      if (typeof onRemoveNode === 'function') {
+        onRemoveNode(id);
+        return;
+      }
+      if (typeof onUpdateNodeData === 'function') {
+        onUpdateNodeData(id, {
+          imageUrl: '',
+          images: [],
+          runId: undefined,
+          imageGeneratedAt: undefined,
+        });
+      }
+    })();
+  }, [expiryMeta?.isExpired, imageUrl, imageId, createdAtForExpiry, id, onRemoveNode, onUpdateNodeData, images]);
 
   useEffect(() => {
     if (!user) return;
@@ -37,7 +109,12 @@ const GeneratedImageNode = memo(({ id, data }) => {
     ({ imageUrl: newUrl, runId: newRunId, imageId: newImageId }) => {
       if (typeof onUpdateNodeData !== 'function') return;
       const newImages = newImageId ? [{ id: newImageId, url: newUrl }] : [{ id: imageId, url: newUrl }];
-      onUpdateNodeData(id, { imageUrl: newUrl, runId: newRunId, images: newImages });
+      onUpdateNodeData(id, {
+        imageUrl: newUrl,
+        runId: newRunId,
+        images: newImages,
+        imageGeneratedAt: new Date().toISOString(),
+      });
     },
     [onUpdateNodeData, id, imageId]
   );
@@ -54,7 +131,22 @@ const GeneratedImageNode = memo(({ id, data }) => {
           {imageUrl ? (
             <>
               <img src={imageUrl} alt={label} className="w-full h-full object-cover cursor-pointer" onClick={() => setPreviewOpen(true)} />
-              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+              {expiryMeta && (
+                <div className="absolute bottom-1 left-1 right-1 pointer-events-none flex justify-center z-50">
+                  <span
+                    className={cn(
+                      'text-[10px] font-semibold px-1.5 py-0.5 rounded-md border shadow-sm max-w-full truncate',
+                      expiryMeta.isSoon
+                        ? 'bg-red-500/15 text-red-700 border-red-500/35 dark:text-red-300'
+                        : 'bg-background/85 text-foreground border-border/60 backdrop-blur-sm'
+                    )}
+                    title={expiryMeta.isExpired ? 'Expirado (~1h no servidor)' : `Expira em ~${expiryMeta.text}`}
+                  >
+                    {expiryMeta.isExpired ? 'Expirado' : `-${expiryMeta.text}`}
+                  </span>
+                </div>
+              )}
+              <div className="absolute inset-0 z-20 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1 pointer-events-none group-hover:pointer-events-auto">
                 <Button type="button" size="sm" variant="secondary" className="h-7 text-xs" onClick={() => setPreviewOpen(true)}>
                   <Expand className="w-3 h-3 mr-1" /> Ver
                 </Button>

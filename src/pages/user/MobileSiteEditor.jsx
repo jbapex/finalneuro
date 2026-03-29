@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { Helmet } from 'react-helmet';
-import { Loader2, ArrowLeft, MessageSquare, Eye } from 'lucide-react';
+import { Loader2, ArrowLeft, MessageSquare, Eye, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 
@@ -11,6 +11,7 @@ import ChatPanel from '@/components/site-builder/ChatPanel';
 import PreviewPanel from '@/components/site-builder/PreviewPanel';
 import ImageBankModal from '@/components/site-builder/ImageBankModal';
 import { cn } from '@/lib/utils';
+import { buildDeployableSiteHtml, triggerDownloadTextFile } from '@/lib/siteBuilderDocument';
 
 const MobileSiteEditor = () => {
   const { projectId } = useParams();
@@ -90,6 +91,27 @@ const MobileSiteEditor = () => {
     selectedElementRef.current = selectedElement;
   }, [selectedElement]);
 
+  const handleDownloadForHosting = useCallback(() => {
+    const doc = buildDeployableSiteHtml({
+      htmlContent,
+      pageStructure: null,
+      title: project?.name || 'Site',
+    });
+    if (!doc) {
+      toast({
+        title: 'Nada para exportar',
+        description: 'Gere conteúdo antes de baixar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    triggerDownloadTextFile(doc, 'index.html');
+    toast({
+      title: 'index.html gerado',
+      description: 'Envie para public_html na Hostinger ou Hostgator.',
+    });
+  }, [htmlContent, project?.name, toast]);
+
   const onImageSelect = (image) => {
     const currentSelectedElement = selectedElementRef.current;
     if (!currentSelectedElement || currentSelectedElement.type !== 'image') {
@@ -137,7 +159,10 @@ const MobileSiteEditor = () => {
           <Button variant="ghost" size="icon" onClick={() => navigate(backDestination)}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <h1 className="text-lg font-semibold truncate">{project.name}</h1>
+          <h1 className="text-lg font-semibold flex-1 min-w-0 truncate">{project.name}</h1>
+          <Button type="button" variant="outline" size="icon" className="shrink-0" onClick={handleDownloadForHosting} title="Baixar index.html para hospedagem">
+            <Download className="h-5 w-5" />
+          </Button>
         </header>
 
         <main className="flex-grow overflow-y-auto pb-20 relative">

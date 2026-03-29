@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }) => {
     if (planId) {
       const { data: planRow } = await supabase
         .from('plans')
-        .select('has_site_builder_access, has_ads_access, has_strategic_planner_access, has_campaign_analyzer_access, has_image_generator_access, has_ai_chat_access, has_creative_flow_access, has_transcriber_access, has_trending_topics_access, has_keyword_planner_access, has_publication_calendar_access, has_neurodesign_access')
+        .select('has_site_builder_access, has_ads_access, has_strategic_planner_access, has_campaign_analyzer_access, has_image_generator_access, has_ai_chat_access, has_creative_flow_access, has_transcriber_access, has_trending_topics_access, has_keyword_planner_access, has_publication_calendar_access, has_neurodesign_access, plan_image_generation_config')
         .eq('id', planId)
         .single();
 

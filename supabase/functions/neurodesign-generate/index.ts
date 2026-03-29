@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { enqueueUserGoogle } from "../_shared/googleUserQueue.ts";
+import { NEURODESIGN_PREMIUM_OUTPUT_SUFFIX } from "../_shared/neurodesignPremiumDirective.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -294,7 +296,8 @@ function buildPrompt(config: Record<string, unknown>): string {
   const restrictionBlock = restrictionParts.filter(Boolean).join(" ");
   const textBlock = textBlockParts.filter(Boolean).join(" ");
   const prefix = [restrictionBlock, textBlock].filter(Boolean).join(" ");
-  return prefix ? prefix + " " + mainPrompt : mainPrompt;
+  const base = prefix ? prefix + " " + mainPrompt : mainPrompt;
+  return `${base.trim()} ${NEURODESIGN_PREMIUM_OUTPUT_SUFFIX}`.trim();
 }
 
 const SUBJECT_FACE_INSTRUCTION =
@@ -630,18 +633,20 @@ serve(async (req) => {
             } else if (apiUrl.includes("generativelanguage") || conn.provider?.toLowerCase() === "google") {
               providerLabel = "google";
               const imageSize = normalizeImageSize(config.image_size);
-              images = await generateWithGoogleGemini(
-                conn as Conn,
-                promptToUse,
-                quantityForApi,
-                (config.dimensions as string) || "1:1",
-                imageSize,
-                subjectImageUrls,
-                styleReferenceUrls,
-                styleInstruction,
-                logoUrl,
-                scenarioPhotoUrls,
-                subjectInstruction
+              images = await enqueueUserGoogle(user.id, () =>
+                generateWithGoogleGemini(
+                  conn as Conn,
+                  promptToUse,
+                  quantityForApi,
+                  (config.dimensions as string) || "1:1",
+                  imageSize,
+                  subjectImageUrls,
+                  styleReferenceUrls,
+                  styleInstruction,
+                  logoUrl,
+                  scenarioPhotoUrls,
+                  subjectInstruction
+                )
               );
             }
           } catch (apiErr) {
@@ -668,7 +673,7 @@ serve(async (req) => {
     const { data: insertedImages, error: insertError } = await supabase
       .from("neurodesign_generated_images")
       .insert(imageRows)
-      .select("id, run_id, project_id, url, thumbnail_url, width, height");
+      .select("id, run_id, project_id, url, thumbnail_url, width, height, created_at");
 
     if (insertError) {
       await supabase

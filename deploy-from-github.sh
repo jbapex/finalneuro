@@ -8,6 +8,12 @@ VOLUME_FUNCTIONS="/root/supabase/docker/volumes/functions"
 NEUROAPICE="/root/neuroapice"
 FUNCTION_DIRS="download-video generate-content generic-ai-chat get-google-models get-openai-models get-openrouter-models get-video-metadata neurodesign-generate neurodesign-generate-google neurodesign-refine neurodesign-refine-google page-analyzer site-builder-assistant"
 
+if [ "${NEUROAPICE_DEPLOY_UNLOCK:-}" != "1" ]; then
+  echo "Deploy congelado: migração dist -> src em curso. Nada foi alterado no servidor."
+  echo "Para forçar o deploy quando estiver pronto: NEUROAPICE_DEPLOY_UNLOCK=1 $0"
+  exit 1
+fi
+
 echo "=== 1. Git pull ==="
 cd "$REPO"
 git pull origin main
@@ -25,6 +31,10 @@ cp "$REPO/nginx.conf" "$NEUROAPICE/nginx.conf"
 echo ""
 echo "=== 4. Sincronizar Edge Functions ==="
 cd "$REPO/supabase/functions"
+if [ -d "_shared" ]; then
+  cp -r "_shared" "$VOLUME_FUNCTIONS/"
+  echo "  -> _shared"
+fi
 for dir in $FUNCTION_DIRS; do
   if [ -d "$dir" ]; then
     cp -r "$dir" "$VOLUME_FUNCTIONS/"

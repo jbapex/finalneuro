@@ -3,7 +3,7 @@ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, us
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
-import { Loader2, X, LayoutList, MessageSquare, Eye } from 'lucide-react';
+import { Loader2, X, LayoutList, MessageSquare, Eye, Download } from 'lucide-react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -15,6 +15,7 @@ import ModulePanel from '@/components/site-builder/ModulePanel';
 import ChatPanel from '@/components/site-builder/ChatPanel';
 import PreviewPanel from '@/components/site-builder/PreviewPanel';
 import ImageBankModal from '@/components/site-builder/ImageBankModal';
+import { buildDeployableSiteHtml, triggerDownloadTextFile } from '@/lib/siteBuilderDocument';
 
 const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
   const { toast } = useToast();
@@ -206,6 +207,27 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
     setSelectedElement(null);
   };
 
+  const handleDownloadForHosting = useCallback(() => {
+    const doc = buildDeployableSiteHtml({
+      htmlContent: null,
+      pageStructure,
+      title: project?.name || 'Site',
+    });
+    if (!doc) {
+      toast({
+        title: 'Nada para exportar',
+        description: 'Adicione módulos ou gere conteúdo antes de baixar.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    triggerDownloadTextFile(doc, 'index.html');
+    toast({
+      title: 'index.html gerado',
+      description: 'Envie para public_html na Hostinger ou Hostgator.',
+    });
+  }, [pageStructure, project?.name, toast]);
+
   const renderDesktopView = () => (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <ResizablePanelGroup direction="horizontal" className="flex-grow">
@@ -314,8 +336,12 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
         ) : (
           <div className="flex flex-col h-full bg-background text-foreground">
             <header className="p-2 border-b flex items-center justify-between gap-4">
-              <h1 className="text-lg font-semibold pl-4">{project?.name}</h1>
-              <Button variant="ghost" size="icon" onClick={onClose}>
+              <h1 className="text-lg font-semibold pl-4 flex-1 min-w-0 truncate">{project?.name}</h1>
+              <Button type="button" variant="outline" size="sm" className="shrink-0 mr-2" onClick={handleDownloadForHosting}>
+                <Download className="h-4 w-4 mr-2" />
+                Para hospedagem
+              </Button>
+              <Button variant="ghost" size="icon" className="shrink-0" onClick={onClose}>
                 <X className="h-5 w-5" />
               </Button>
             </header>

@@ -3,7 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Target, Bot, MessageSquare, BrainCircuit, FileSearch, Paintbrush, Youtube, SearchCode, Globe, BookOpen, FileText, LayoutGrid, ImageIcon, Palette, Type, User } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 const NodeToolbar = ({ addNode, isLoadingData }) => {
     const nodeGroups = [
@@ -48,7 +47,7 @@ const NodeToolbar = ({ addNode, isLoadingData }) => {
     ];
 
     return (
-        <ScrollArea className="h-full w-full">
+        <div className="h-full w-full overflow-y-auto">
             <div className="p-4">
                 <h2 className="text-xl font-bold mb-6">Ferramentas</h2>
                 <div className="space-y-4">
@@ -74,7 +73,7 @@ const NodeToolbar = ({ addNode, isLoadingData }) => {
                     ))}
                 </div>
             </div>
-        </ScrollArea>
+        </div>
     );
 };
 

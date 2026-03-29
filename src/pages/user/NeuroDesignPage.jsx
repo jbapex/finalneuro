@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
@@ -9,18 +10,25 @@ import {
   Dialog,
   DialogContent,
 } from '@/components/ui/dialog';
-import { FolderOpen, PanelLeft } from 'lucide-react';
+import { FolderOpen, PanelLeft, Upload } from 'lucide-react';
 import NeuroDesignSidebar from '@/components/neurodesign/NeuroDesignSidebar';
 import BuilderPanel from '@/components/neurodesign/BuilderPanel';
 import PreviewPanel from '@/components/neurodesign/PreviewPanel';
 import MasonryGallery from '@/components/neurodesign/MasonryGallery';
 import NeuroDesignErrorBoundary from '@/components/neurodesign/NeuroDesignErrorBoundary';
+import { getDefaultAiConnection } from '@/lib/userAiDefaults';
+import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
+import { useNeurodesignExpiredCleanup } from '@/hooks/useNeurodesignExpiredCleanup';
 
 import { getFriendlyErrorMessage } from '@/lib/utils';
+import { NEURODESIGN_CHAT_FILL_STORAGE_KEY } from '@/lib/neurodesign/chatBridge';
 
 const NeuroDesignPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [builderFillSeed, setBuilderFillSeed] = useState(undefined);
   const [view, setView] = useState('create');
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -40,9 +48,47 @@ const NeuroDesignPage = () => {
   const [userGalleryHasMore, setUserGalleryHasMore] = useState(true);
   const [isLoadingUserGallery, setIsLoadingUserGallery] = useState(false);
   const [isGalleryPreviewOpen, setIsGalleryPreviewOpen] = useState(false);
+  const [isUploadingRefineSource, setIsUploadingRefineSource] = useState(false);
+  const refineUploadInputRef = useRef(null);
   const isLg = useMediaQuery('(min-width: 1024px)');
   const [sidebarDrawerOpen, setSidebarDrawerOpen] = useState(false);
   const [builderDrawerOpen, setBuilderDrawerOpen] = useState(false);
+  /** undefined = seguir `currentConfig.user_ai_connection_id`; null = mock explícito; string = conexão escolhida no refinamento */
+  const [refineConnectionOverride, setRefineConnectionOverride] = useState(undefined);
+
+  useEffect(() => {
+    const st = location.state;
+    const fromState = st && typeof st.neuroChatFillPrompt === 'string' ? st.neuroChatFillPrompt.trim() : '';
+    if (fromState) {
+      setBuilderFillSeed(fromState);
+      setView('create');
+      if (!isLg) setBuilderDrawerOpen(true);
+      navigate(`${location.pathname}${location.search || ''}`, {
+        replace: true,
+        state: st && typeof st === 'object' ? { ...st, neuroChatFillPrompt: undefined } : {},
+      });
+      toast({
+        title: 'Brief do Chat IA',
+        description: 'Revise o texto em Preencher com IA e clique em Preencher campos quando quiser.',
+      });
+      return;
+    }
+    try {
+      const v = sessionStorage.getItem(NEURODESIGN_CHAT_FILL_STORAGE_KEY);
+      if (v != null && v !== '') {
+        sessionStorage.removeItem(NEURODESIGN_CHAT_FILL_STORAGE_KEY);
+        setBuilderFillSeed(v);
+        setView('create');
+        if (!isLg) setBuilderDrawerOpen(true);
+        toast({
+          title: 'Brief do Chat IA',
+          description: 'Texto colocado em Preencher com IA.',
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [location.key, location.pathname, location.search, navigate, toast, isLg]);
 
   const fetchProjects = useCallback(async () => {
     if (!user) return [];
@@ -96,7 +142,12 @@ const NeuroDesignPage = () => {
         .select('id, name, provider, default_model, capabilities')
         .eq('user_id', user.id);
       if (error) return;
-      setImageConnections((data || []).filter((c) => c.capabilities?.image_generation));
+      const list = (data || []).filter((c) => c.capabilities?.image_generation);
+      const preferred = getDefaultAiConnection(user.id, 'image');
+      if (preferred) {
+        list.sort((a, b) => (String(a.id) === String(preferred) ? -1 : String(b.id) === String(preferred) ? 1 : 0));
+      }
+      setImageConnections(list);
     } catch (_e) {
       setImageConnections([]);
     }
@@ -112,12 +163,31 @@ const NeuroDesignPage = () => {
         .eq('is_active', true);
       if (error) return;
       const list = (data || []).filter((c) => c.capabilities?.text_generation === true);
+      const preferred = getDefaultAiConnection(user.id, 'llm');
+      if (preferred) {
+        list.sort((a, b) => (String(a.id) === String(preferred) ? -1 : String(b.id) === String(preferred) ? 1 : 0));
+      }
       setLlmConnections(list);
-      setSelectedLlmId((prev) => (list.length > 0 && (!prev || !list.some((c) => c.id === prev)) ? list[0].id : prev));
+      setSelectedLlmId((prev) => (list.length > 0 && (!prev || !list.some((c) => String(c.id) === String(prev))) ? list[0].id : prev));
     } catch (_e) {
       setLlmConnections([]);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (!selectedProject) return;
+    if (!imageConnections.length) return;
+    const preferred = getDefaultAiConnection(user?.id, 'image');
+    setCurrentConfig((prev) => {
+      const current = prev?.user_ai_connection_id;
+      if (current && current !== 'none' && imageConnections.some((c) => String(c.id) === String(current))) {
+        return prev;
+      }
+      const fallback = imageConnections.find((c) => String(c.id) === String(preferred)) || imageConnections[0];
+      if (!fallback?.id) return prev;
+      return { ...(prev || {}), user_ai_connection_id: fallback.id };
+    });
+  }, [selectedProject, imageConnections, user?.id]);
 
   const fetchRuns = useCallback(async (projectId) => {
     if (!projectId) return;
@@ -210,6 +280,7 @@ const NeuroDesignPage = () => {
     if (selectedProject) {
       setCurrentConfig(null);
       setSelectedImage(null);
+      setRefineConnectionOverride(undefined);
       fetchRuns(selectedProject.id);
       fetchImages(selectedProject.id);
     } else {
@@ -229,6 +300,49 @@ const NeuroDesignPage = () => {
       fetchImages(selectedProject.id);
     }
   }, [view, loadUserGalleryImages, fetchImages, selectedProject?.id]);
+
+  useNeurodesignExpiredCleanup({
+    enabled: Boolean(user?.id),
+    images,
+    setImages,
+    setSelectedImage,
+  });
+
+  const effectiveRefineUserAiConnectionId = useMemo(() => {
+    if (refineConnectionOverride !== undefined) return refineConnectionOverride;
+    return currentConfig?.user_ai_connection_id ?? null;
+  }, [refineConnectionOverride, currentConfig?.user_ai_connection_id]);
+
+  const refineConnectionSelectValue = useMemo(() => {
+    if (refineConnectionOverride === undefined) return '__inherit__';
+    if (refineConnectionOverride === null) return 'none';
+    return String(refineConnectionOverride);
+  }, [refineConnectionOverride]);
+
+  const builderConnForInherit = useMemo(() => {
+    const id = currentConfig?.user_ai_connection_id;
+    if (!id) return null;
+    return imageConnections.find((c) => String(c.id) === String(id)) || null;
+  }, [currentConfig?.user_ai_connection_id, imageConnections]);
+
+  const builderInheritHint = useMemo(() => {
+    if (!currentConfig?.user_ai_connection_id) return 'mock / demonstração';
+    if (builderConnForInherit) {
+      return `${builderConnForInherit.name}${builderConnForInherit.provider ? ` (${builderConnForInherit.provider})` : ''}`;
+    }
+    return 'conexão salva no projeto';
+  }, [currentConfig?.user_ai_connection_id, builderConnForInherit]);
+
+  const hasRefineImageConnection = !!(
+    effectiveRefineUserAiConnectionId &&
+    effectiveRefineUserAiConnectionId !== 'none'
+  );
+
+  const handleRefineConnectionSelect = useCallback((v) => {
+    if (v === '__inherit__') setRefineConnectionOverride(undefined);
+    else if (v === 'none') setRefineConnectionOverride(null);
+    else setRefineConnectionOverride(v);
+  }, []);
 
   const handleGenerate = async (config) => {
     if (generatingRef.current) return;
@@ -322,6 +436,56 @@ const NeuroDesignPage = () => {
     }
   };
 
+  const handleUploadRefineSource = async (files) => {
+    const file = files?.[0];
+    if (!file) return;
+    if (!selectedProject?.id || !user?.id) {
+      toast({ title: 'Selecione uma galeria antes de enviar a imagem', variant: 'destructive' });
+      return;
+    }
+    setIsUploadingRefineSource(true);
+    try {
+      const sourceUrl = await uploadNeuroDesignFile(user.id, selectedProject.id, 'refine_source', file);
+      const { data: runData, error: runError } = await supabase
+        .from('neurodesign_generation_runs')
+        .insert({
+          project_id: selectedProject.id,
+          type: 'generate',
+          status: 'success',
+          provider: 'manual_upload',
+        })
+        .select('id')
+        .single();
+      if (runError || !runData?.id) throw runError || new Error('Falha ao criar execução da imagem enviada.');
+
+      const { data: imageData, error: imageError } = await supabase
+        .from('neurodesign_generated_images')
+        .insert({
+          run_id: runData.id,
+          project_id: selectedProject.id,
+          url: sourceUrl,
+          thumbnail_url: sourceUrl,
+        })
+        .select('id, run_id, project_id, url, thumbnail_url, width, height, created_at')
+        .single();
+      if (imageError || !imageData?.id) throw imageError || new Error('Falha ao registrar imagem enviada.');
+
+      setSelectedImage(imageData);
+      setImages((prev) => [imageData, ...prev.filter((img) => img.id !== imageData.id)]);
+      toast({ title: 'Imagem carregada', description: 'Agora você pode usar o painel de refinamento.' });
+      fetchRuns(selectedProject.id).catch(() => {});
+    } catch (e) {
+      toast({
+        title: 'Erro ao enviar imagem',
+        description: e?.message || 'Não foi possível preparar a imagem para refinamento.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsUploadingRefineSource(false);
+      if (refineUploadInputRef.current) refineUploadInputRef.current.value = '';
+    }
+  };
+
   const handleRefine = async (payload) => {
     if (refiningRef.current) return;
     if (!selectedProject || !selectedImage?.id) {
@@ -354,7 +518,7 @@ const NeuroDesignPage = () => {
         imageId: selectedImage.id,
         instruction,
         configOverrides,
-        userAiConnectionId: currentConfig?.user_ai_connection_id || null,
+        userAiConnectionId: effectiveRefineUserAiConnectionId || null,
       };
       if (referenceImageUrl) body.referenceImageUrl = referenceImageUrl;
       if (replacementImageUrl) body.replacementImageUrl = replacementImageUrl;
@@ -366,7 +530,7 @@ const NeuroDesignPage = () => {
       if (selectionFont) body.selectionFont = selectionFont;
       if (selectionFontStyle) body.selectionFontStyle = selectionFontStyle;
 
-      const refineConn = imageConnections.find((c) => c.id === currentConfig?.user_ai_connection_id);
+      const refineConn = imageConnections.find((c) => String(c.id) === String(effectiveRefineUserAiConnectionId));
       const isGoogleRefine = refineConn?.provider?.toLowerCase() === 'google';
       const refineFnName = isGoogleRefine ? 'neurodesign-refine-google' : 'neurodesign-refine';
       const { data, error } = await supabase.functions.invoke(refineFnName, {
@@ -415,10 +579,11 @@ const NeuroDesignPage = () => {
   const SHAPE_STYLE_VALUES = ['rounded_rectangle', 'banner', 'pill'];
 
   const NEURODESIGN_FILL_ALLOWED_KEYS = new Set([
-    'subject_enabled', 'subject_gender', 'subject_description', 'quantity', 'niche_project', 'environment',
+    'subject_enabled', 'subject_mode', 'subject_gender', 'subject_description', 'quantity', 'niche_project', 'environment',
     'shot_type', 'layout_position', 'dimensions', 'image_size', 'use_scenario_photos',
     'text_enabled', 'text_mode', 'custom_text', 'custom_text_font_description', 'use_reference_image_text', 'headline_h1', 'subheadline_h2', 'cta_button_text', 'text_position', 'text_gradient',
     'headline_zone', 'subheadline_zone', 'cta_zone',
+    'headline_position', 'subheadline_position', 'cta_position',
     'headline_font', 'subheadline_font', 'cta_font',
     'headline_color', 'subheadline_color', 'cta_color',
     'headline_shape_enabled', 'subheadline_shape_enabled', 'cta_shape_enabled',
@@ -429,11 +594,15 @@ const NeuroDesignPage = () => {
     'floating_elements_enabled', 'floating_elements_text', 'additional_prompt',
   ]);
   const NEURODESIGN_FILL_ENUMS = {
+    subject_mode: ['person', 'product'],
     subject_gender: ['masculino', 'feminino'],
     shot_type: ['close-up', 'medio busto', 'americano'],
     layout_position: ['esquerda', 'centro', 'direita'],
     dimensions: ['1:1', '4:5', '9:16', '16:9'],
     text_position: ['esquerda', 'centro', 'direita'],
+    headline_position: ['esquerda', 'centro', 'direita'],
+    subheadline_position: ['esquerda', 'centro', 'direita'],
+    cta_position: ['esquerda', 'centro', 'direita'],
     text_mode: ['structured', 'free'],
     image_size: ['1K', '2K', '4K'],
     headline_zone: ZONE_VALUES,
@@ -506,8 +675,13 @@ Mapeamento de termos comuns:
 - Formato: "feed" ou "quadrado" -> dimensions "1:1"; "stories" ou "vertical" -> "9:16"; "horizontal" ou "banner" -> "16:9"; "4:5" ou "retrato feed" -> "4:5"
 - Plano: "close" ou "rosto" -> shot_type "close-up"; "médio" ou "busto" -> "medio busto"; "americano" ou "corpo inteiro" -> "americano"
 - Qualidade: "alta" ou "2k" ou "alta resolução" -> image_size "2K"; "máxima" ou "4k" -> "4K"; caso contrário use "1K"
+ESTÉTICA PROFISSIONAL (brief de social/ads, agência, posicionamento, "não parecer IA"):
+- Defina ultra_realistic: true e sobriety entre 75 e 95 (mais profissional, menos "arte genérica").
+- Se o brief mencionar retrato com fundo desfocado, evento ou palco: blur_enabled: true.
+- Em additional_prompt coloque APENAS complementos técnicos (luz, textura, composição, o que evitar). O sistema irá anexar automaticamente o texto integral colado pelo usuário antes da geração — não precisa copiar o brief inteiro nesse campo.
 Chaves e valores (use exatamente assim no JSON quando preencher):
-- subject_enabled: true ou false (se há pessoa na imagem)
+- subject_enabled: true ou false (há figura humana na arte?)
+- subject_mode: "person" (pessoa/retrato) ou "product" (produto/objeto sem pessoa)
 - subject_gender: "masculino" ou "feminino"
 - subject_description: string (pose, roupa, expressão)
 - quantity: número de 1 a 5 (quantidade de pessoas na imagem)
@@ -525,6 +699,7 @@ Chaves e valores (use exatamente assim no JSON quando preencher):
 - use_reference_image_text: boolean; true se o brief indicar que o texto deve ser copiado/extraído da imagem de referência.
 - text_position: "esquerda" ou "centro" ou "direita"
 - headline_zone, subheadline_zone, cta_zone: posição do texto no quadro. Valores: "top-left", "top-center", "top-right", "center-left", "center", "center-right", "bottom-left", "bottom-center", "bottom-right"
+- headline_position, subheadline_position, cta_position: fallback legado "esquerda", "centro" ou "direita" (use se não houver zona ou o brief pedir alinhamento simples)
 - headline_font, subheadline_font, cta_font: "sans", "serif", "bold", "modern" ou "" (sistema decide)
 - headline_color, subheadline_color, cta_color: cor do texto em hex, ex: "#ffffff"
 - headline_shape_enabled, subheadline_shape_enabled, cta_shape_enabled: true ou false (faixa/banner atrás do texto)
@@ -566,6 +741,10 @@ Responda somente com o JSON.`;
         if (key === 'quantity') {
           const n = Number(value);
           if (!Number.isNaN(n)) sanitized[key] = Math.min(5, Math.max(1, Math.round(n)));
+        } else if (key === 'subject_mode' && typeof value === 'string') {
+          const v = value.trim().toLowerCase();
+          if (v === 'product' || v === 'produto' || v === 'objeto') sanitized[key] = 'product';
+          else if (v === 'person' || v === 'pessoa' || v === 'people' || v === 'retrato') sanitized[key] = 'person';
         } else if (key === 'shot_type' && typeof value === 'string') {
           const normalized = normalizeShotType(value) || (NEURODESIGN_FILL_ENUMS.shot_type.includes(value.trim()) ? value.trim() : null);
           if (normalized) sanitized[key] = normalized;
@@ -607,6 +786,14 @@ Responda somente com o JSON.`;
           if (key === 'visual_attributes') merged.visual_attributes = { ...(base.visual_attributes || {}), ...sanitized.visual_attributes };
           else merged[key] = sanitized[key];
         }
+        const briefOriginal = trimmed.trim();
+        const llmExtra = sanitized.additional_prompt != null ? String(sanitized.additional_prompt).trim() : '';
+        const combinedAp = [
+          'BRIEF ORIGINAL (texto integral de Preencher com IA):',
+          briefOriginal,
+          llmExtra ? `--- NOTAS TÉCNICAS EXTRAÍDAS (luz, composição, estilo) ---\n${llmExtra}` : '',
+        ].filter(Boolean).join('\n\n');
+        merged.additional_prompt = combinedAp.slice(0, 80000);
         return merged;
       });
       toast({ title: 'Campos preenchidos com sucesso!' });
@@ -724,13 +911,25 @@ Responda somente com o JSON.`;
               </Button>
               {view === 'create' && (
                 <Button
+                  variant="secondary"
+                  size="sm"
+                  className="shrink-0 font-semibold border border-primary/30 bg-primary/10 text-foreground hover:bg-primary/15 shadow-sm"
+                  onClick={() => setBuilderDrawerOpen(true)}
+                >
+                  <PanelLeft className="h-4 w-4 mr-1.5 shrink-0" />
+                  <span className="whitespace-nowrap">Configurações</span>
+                </Button>
+              )}
+              {view === 'refine' && (
+                <Button
                   variant="outline"
                   size="sm"
                   className="border-border hover:bg-muted"
-                  onClick={() => setBuilderDrawerOpen(true)}
+                  onClick={() => refineUploadInputRef.current?.click()}
+                  disabled={isUploadingRefineSource}
                 >
-                  <PanelLeft className="h-4 w-4 mr-1" />
-                  Configurações
+                  <Upload className="h-4 w-4 mr-1" />
+                  {isUploadingRefineSource ? 'Enviando...' : 'Enviar imagem'}
                 </Button>
               )}
             </div>
@@ -749,6 +948,8 @@ Responda somente com o JSON.`;
                     onFillFromPrompt={handleFillFromPrompt}
                     hasLlmConnection={llmConnections.length > 0}
                     isFillingFromPrompt={isFillingFromPrompt}
+                    selectedLlmId={selectedLlmId}
+                    seedFillPrompt={builderFillSeed}
                   />
                 </div>
               )}
@@ -763,7 +964,11 @@ Responda somente com o JSON.`;
                   onRefine={handleRefine}
                   onDownload={downloadHandler}
                   onSelectImage={setSelectedImage}
-                  hasImageConnection={!!(currentConfig?.user_ai_connection_id && currentConfig.user_ai_connection_id !== 'none')}
+                  hasImageConnection={hasRefineImageConnection}
+                  imageConnections={imageConnections}
+                  refineConnectionSelectValue={refineConnectionSelectValue}
+                  onRefineConnectionChange={handleRefineConnectionSelect}
+                  builderInheritHint={builderInheritHint}
                 />
               </div>
             </div>
@@ -799,8 +1004,55 @@ Responda somente com o JSON.`;
               )}
             </div>
           )}
+          {view === 'refine' && (
+            <div className="flex flex-1 min-w-0 min-h-0">
+              <div className="flex-1 min-w-0 flex flex-col">
+                <div className="px-4 pt-4 sm:px-6">
+                  <div className="rounded-lg border border-border bg-muted/30 p-3 flex items-center justify-between gap-3">
+                    <p className="text-sm text-muted-foreground">
+                      Envie uma imagem base para refinar, ou selecione uma arte já existente abaixo.
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => refineUploadInputRef.current?.click()}
+                      disabled={isUploadingRefineSource}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      {isUploadingRefineSource ? 'Enviando...' : 'Upload para refinamento'}
+                    </Button>
+                  </div>
+                </div>
+                <PreviewPanel
+                  project={selectedProject}
+                  user={user}
+                  selectedImage={selectedImage}
+                  images={images}
+                  isGenerating={false}
+                  isRefining={isRefining}
+                  onRefine={handleRefine}
+                  onDownload={downloadHandler}
+                  onSelectImage={setSelectedImage}
+                  hasImageConnection={hasRefineImageConnection}
+                  imageConnections={imageConnections}
+                  refineConnectionSelectValue={refineConnectionSelectValue}
+                  onRefineConnectionChange={handleRefineConnectionSelect}
+                  builderInheritHint={builderInheritHint}
+                  emptyStateTitle="Aguardando imagem para refinamento"
+                  emptyStateDescription="Faça upload de uma imagem ou selecione uma arte nas miniaturas. Escolha a conexão de imagem acima do preview se o builder não tiver uma selecionada."
+                />
+              </div>
+            </div>
+          )}
         </main>
       </div>
+      <input
+        ref={refineUploadInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => handleUploadRefineSource(e.target.files)}
+      />
 
       {/* Drawer Navegação (mobile/tablet) */}
       <Dialog open={sidebarDrawerOpen} onOpenChange={setSidebarDrawerOpen}>
@@ -829,8 +1081,11 @@ Responda somente com o JSON.`;
           className="fixed left-0 top-0 h-full w-full max-w-md translate-x-0 translate-y-0 rounded-none border-r border-border p-0 gap-0 grid-rows-auto bg-card data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left overflow-hidden flex flex-col"
           onPointerDownOutside={(e) => e.preventDefault()}
         >
-          <div className="p-4 border-b border-border shrink-0">
+          <div className="p-4 border-b border-border shrink-0 space-y-1">
             <h3 className="font-semibold text-foreground">Configurações de geração</h3>
+            <p className="text-xs text-muted-foreground">
+              Texto, sujeito, referências e geração. Ative <strong className="text-foreground">Texto na imagem</strong> para ver gradiente e CTA.
+            </p>
           </div>
           <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 min-w-0 pb-[env(safe-area-inset-bottom)]">
             <BuilderPanel
@@ -846,6 +1101,8 @@ Responda somente com o JSON.`;
               onFillFromPrompt={handleFillFromPrompt}
               hasLlmConnection={llmConnections.length > 0}
               isFillingFromPrompt={isFillingFromPrompt}
+              selectedLlmId={selectedLlmId}
+              seedFillPrompt={builderFillSeed}
             />
           </div>
         </DialogContent>

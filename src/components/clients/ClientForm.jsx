@@ -16,18 +16,19 @@ import { Badge } from '@/components/ui/badge';
 import ClientOnboardingAssistant from './ClientOnboardingAssistant';
 import { cn } from '@/lib/utils';
 
+/** Sem limite artificial de caracteres: textos longos alimentam melhor contexto e IA. Limite prático = Postgres text (~1GB). */
 const clientSchema = z.object({
-  name: z.string().min(2, { message: "O nome do cliente deve ter pelo menos 2 caracteres." }),
-  creator_name: z.string().max(50, "Máximo de 50 caracteres").optional().nullable(),
-  niche: z.string().max(50, "Máximo de 50 caracteres").optional().nullable(),
-  style_in_3_words: z.string().max(100, "Máximo de 100 caracteres").optional().nullable(),
-  product_to_promote: z.string().max(140, "Máximo de 140 caracteres").optional().nullable(),
-  target_audience: z.string().max(100, "Máximo de 100 caracteres").optional().nullable(),
-  success_cases: z.string().max(200, "Máximo de 200 caracteres").optional().nullable(),
-  profile_views: z.string().max(100, "Máximo de 100 caracteres").optional().nullable(),
-  followers: z.string().max(100, "Máximo de 100 caracteres").optional().nullable(),
-  appearance_format: z.string().max(100, "Máximo de 100 caracteres").optional().nullable(),
-  catchphrases: z.string().max(100, "Máximo de 100 caracteres").optional().nullable(),
+  name: z.string().min(2, { message: 'O nome do cliente deve ter pelo menos 2 caracteres.' }),
+  creator_name: z.string().optional().nullable(),
+  niche: z.string().optional().nullable(),
+  style_in_3_words: z.string().optional().nullable(),
+  product_to_promote: z.string().optional().nullable(),
+  target_audience: z.string().optional().nullable(),
+  success_cases: z.string().optional().nullable(),
+  profile_views: z.string().optional().nullable(),
+  followers: z.string().optional().nullable(),
+  appearance_format: z.string().optional().nullable(),
+  catchphrases: z.string().optional().nullable(),
   phone: z.string().optional().nullable(),
   about: z.string().optional().nullable(),
 });
@@ -153,7 +154,13 @@ const ClientForm = ({ client, onSave, onCancel }) => {
                     {renderField('creator_name', 'Seu nome ou nome do criador', 'input', 'Ex: Josias Bonfim')}
                     {renderField('niche', 'Seu nicho', 'input', 'Ex: Marketing Digital')}
                     {renderField('style_in_3_words', 'Defina seu estilo em 3 palavras', 'input', 'Ex: Divertido, direto, inspirador')}
-                    {renderField('product_to_promote', 'Você tem algum produto/serviço específico para promover? Qual?', 'input', 'Ex: Consultoria de Marketing')}
+                    {renderField(
+                      'product_to_promote',
+                      'Você tem algum produto/serviço específico para promover? Qual?',
+                      'textarea',
+                      'Ex: Consultoria de Marketing, linha de produtos, diferenciais…',
+                      4
+                    )}
                     {renderField('target_audience', 'Público-alvo principal', 'textarea', 'Ex: Mulheres de 18-35 anos interessadas em maquiagem acessível...')}
                     {renderField('success_cases', 'Casos de sucesso', 'textarea', 'Quais são grandes feitos que você possui para o seu mercado, comente sobre sua experiência no nicho')}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -161,7 +168,13 @@ const ClientForm = ({ client, onSave, onCancel }) => {
                         {renderField('followers', 'Total de seguidores', 'input', 'Ex: 10k de seguidores')}
                     </div>
                     {renderField('appearance_format', 'Formato de aparição', 'input', 'Ex: Apareço falando / voz em off / só texto e imagens')}
-                    {renderField('catchphrases', 'Bordões ou frases-chave que usa sempre', 'input', 'Ex: "Anota essa!"')}
+                    {renderField(
+                      'catchphrases',
+                      'Bordões ou frases-chave que usa sempre',
+                      'textarea',
+                      'Ex: slogans, tags de campanha, variações de tom…',
+                      3
+                    )}
                     {renderField('phone', 'Telefone (Opcional)', 'input', '(11) 99999-9999')}
                     {renderField('about', 'Sobre o Cliente (Opcional)', 'textarea', 'Descreva o que o cliente vende, um pouco sobre a empresa, etc.', 3)}
                 </div>

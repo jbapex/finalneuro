@@ -14,6 +14,7 @@ import ChurchArtBuilderPanel, { churchArtDefaultConfig } from '@/components/chur
 import PreviewPanel from '@/components/neurodesign/PreviewPanel';
 import MasonryGallery from '@/components/neurodesign/MasonryGallery';
 import NeuroDesignErrorBoundary from '@/components/neurodesign/NeuroDesignErrorBoundary';
+import { useNeurodesignExpiredCleanup } from '@/hooks/useNeurodesignExpiredCleanup';
 
 const PROJECT_TYPE = 'church_art';
 
@@ -208,6 +209,13 @@ const ArtesCultoPage = () => {
     if (view === 'gallery') { setUserGalleryPage(0); setUserGalleryHasMore(true); loadUserGalleryImages(0, { reset: true }); }
     else if (view === 'create' && selectedProject?.id) fetchImages(selectedProject.id);
   }, [view, loadUserGalleryImages, fetchImages, selectedProject?.id]);
+
+  useNeurodesignExpiredCleanup({
+    enabled: Boolean(user?.id),
+    images,
+    setImages,
+    setSelectedImage,
+  });
 
   const handleGenerate = async (config) => {
     if (generatingRef.current || !selectedProject) {

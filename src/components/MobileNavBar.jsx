@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Megaphone, ClipboardList, Bot, LayoutGrid, Lock } from 'lucide-react';
+import { ClipboardList, Bot, LayoutGrid, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
@@ -13,7 +13,6 @@ const MobileNavBar = () => {
   const { toast } = useToast();
   
   const navItems = [
-    { name: 'Campanhas', icon: Megaphone, path: '/campanhas', permissionKey: null },
     { name: 'Ferramentas', icon: ClipboardList, path: '/ferramentas', permissionKey: null },
     { name: 'Chat IA', icon: Bot, path: '/chat-ia', permissionKey: 'ai_chat' },
     { name: 'Mais', icon: LayoutGrid, path: '/menu', permissionKey: null },
@@ -36,7 +35,7 @@ const MobileNavBar = () => {
   
   return (
     <nav className="fixed bottom-0 left-0 right-0 h-20 bg-background/80 backdrop-blur-lg border-t border-border md:hidden z-50 pb-[env(safe-area-inset-bottom)]">
-      <div className="grid h-full max-w-lg grid-cols-4 mx-auto">
+      <div className="grid h-full max-w-lg grid-cols-3 mx-auto">
         {navItems.map((item) => {
           const isActive = item.path === '/ferramentas' ? isToolsActive : location.pathname === item.path;
           const isAllowed = hasPermission(item.permissionKey);

@@ -5,7 +5,7 @@ import '@reactflow/node-resizer/dist/style.css';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Bot, Play, Loader2, ChevronsUpDown, Settings, FileText } from 'lucide-react';
+import { Bot, Play, Loader2, ChevronsUpDown, Settings, FileText, GitBranch } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -14,6 +14,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { getFriendlyErrorMessage } from '@/lib/utils';
+import { listUpstreamAgentContextSources, buildUpstreamContextPromptBlock } from '@/lib/flowBuilderUpstreamContext';
+import { Checkbox } from '@/components/ui/checkbox';
 
 const LlmIntegrationSelector = ({ integrations, selectedId, onSelect, disabled }) => {
     const [open, setOpen] = useState(false);
@@ -96,6 +98,32 @@ const AgentNode = ({ id, data, isConnectable, selected }) => {
         return campaigns;
     }, [campaigns, clientFromUpstream?.id]);
 
+    const upstreamContextSources = useMemo(() => listUpstreamAgentContextSources(inputData), [inputData]);
+
+    useEffect(() => {
+        const validKeys = new Set(upstreamContextSources.map((s) => s.key));
+        const prev =
+            data.upstreamContextEnabled && typeof data.upstreamContextEnabled === 'object'
+                ? { ...data.upstreamContextEnabled }
+                : {};
+        let dirty = false;
+        for (const k of validKeys) {
+            if (!(k in prev)) {
+                prev[k] = true;
+                dirty = true;
+            }
+        }
+        for (const k of Object.keys(prev)) {
+            if (!validKeys.has(k)) {
+                delete prev[k];
+                dirty = true;
+            }
+        }
+        if (dirty) {
+            onUpdateNodeData(id, { upstreamContextEnabled: prev });
+        }
+    }, [upstreamContextSources, data.upstreamContextEnabled, id, onUpdateNodeData]);
+
     const handleOptionalTextChange = (e) => {
         onUpdateNodeData(id, { optionalText: e.target.value });
     };
@@ -104,6 +132,15 @@ const AgentNode = ({ id, data, isConnectable, selected }) => {
     };
     const handleCampaignChange = (campaignId) => {
         onUpdateNodeData(id, { selectedCampaignId: campaignId || null });
+    };
+
+    const toggleUpstreamSource = (sourceKey, checked) => {
+        const prev =
+            data.upstreamContextEnabled && typeof data.upstreamContextEnabled === 'object'
+                ? { ...data.upstreamContextEnabled }
+                : {};
+        prev[sourceKey] = checked;
+        onUpdateNodeData(id, { upstreamContextEnabled: prev });
     };
 
     // Fetch AI integrations
@@ -249,12 +286,14 @@ const AgentNode = ({ id, data, isConnectable, selected }) => {
               ? contextsToUse.map((c) => (c.name ? `[${c.name}]\n${c.content || ''}` : (c.content || ''))).join('\n\n---\n\n')
               : '';
 
+            const upstreamBlock = buildUpstreamContextPromptBlock(upstreamContextSources, data.upstreamContextEnabled);
+
             // Construct detailed prompt with module context
             const detailedPrompt = `Módulo: ${selectedModule?.name || 'Agente de IA'}
 Prompt do Módulo: ${modulePrompt}
 
 Contexto do Cliente: ${inputData?.client?.data ? JSON.stringify({ ...inputData.client.data, client_contexts: undefined }, null, 2) : 'N/A'}
-${contextBlock ? `Documentos de Contexto do Cliente:\n${contextBlock}\n\n` : ''}Contexto da Campanha: ${(function () {
+${contextBlock ? `Documentos de Contexto do Cliente:\n${contextBlock}\n\n` : ''}${upstreamBlock ? `${upstreamBlock}\n\n` : ''}Contexto da Campanha: ${(function () {
                 const campaignData = inputData?.campaign?.data;
                 if (campaignData) return JSON.stringify(campaignData, null, 2);
                 const sid = data.selectedCampaignId;
@@ -459,6 +498,40 @@ Instruções Adicionais: ${refinePrompt ? `Refine o seguinte texto:\n\n${data.ge
                                     ))}
                                 </SelectContent>
                             </Select>
+                        </div>
+                    )}
+
+                    {/* Saídas de agentes / conteúdo / chat a montante no grafo */}
+                    {selectedModuleId && upstreamContextSources.length > 0 && (
+                        <div className="space-y-2 rounded-md border border-teal-500/30 bg-teal-500/5 p-2">
+                            <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                                <GitBranch className="w-3 h-3" />
+                                Conteúdo de nós anteriores
+                            </Label>
+                            <p className="text-[10px] text-muted-foreground leading-snug">
+                                Marque o conteúdo que quer usar para contexto
+                            </p>
+                            <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1">
+                                {upstreamContextSources.map((src) => (
+                                    <label
+                                        key={src.key}
+                                        className="flex items-start gap-2 text-xs cursor-pointer select-none"
+                                    >
+                                        <Checkbox
+                                            checked={data.upstreamContextEnabled?.[src.key] !== false}
+                                            onCheckedChange={(v) => toggleUpstreamSource(src.key, v === true)}
+                                            className="mt-0.5"
+                                        />
+                                        <span className="leading-tight">
+                                            <span className="font-medium text-foreground">{src.label}</span>
+                                            <span className="block text-[10px] text-muted-foreground truncate max-w-[220px]" title={src.text}>
+                                                {src.text.slice(0, 80)}
+                                                {src.text.length > 80 ? '…' : ''}
+                                            </span>
+                                        </span>
+                                    </label>
+                                ))}
+                            </div>
                         </div>
                     )}
 

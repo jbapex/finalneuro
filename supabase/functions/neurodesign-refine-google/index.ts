@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { enqueueUserGoogle } from "../_shared/googleUserQueue.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -384,7 +385,9 @@ serve(async (req) => {
 
     let refinedUrl: string | null = null;
     try {
-      const result = await refineWithGoogleGemini(conn as Conn, resolvedImageUrls, textPrompt, dimensionsForApi, imageSizeForApi);
+      const result = await enqueueUserGoogle(user.id, () =>
+        refineWithGoogleGemini(conn as Conn, resolvedImageUrls, textPrompt, dimensionsForApi, imageSizeForApi)
+      );
       if (result) refinedUrl = result.url;
     } catch (apiErr) {
       await supabase

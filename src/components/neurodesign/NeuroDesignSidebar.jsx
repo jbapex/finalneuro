@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Image as ImageIcon } from 'lucide-react';
+import { LayoutGrid, Image as ImageIcon, Wand2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NeuroDesignSidebar = ({
@@ -50,6 +50,17 @@ const NeuroDesignSidebar = ({
         >
           <LayoutGrid className="h-4 w-4" />
           Criar
+        </button>
+        <button
+          type="button"
+          onClick={() => handleSetView('refine')}
+          className={cn(
+            'w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors mt-2',
+            view === 'refine' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'text-muted-foreground hover:bg-muted'
+          )}
+        >
+          <Wand2 className="h-4 w-4" />
+          Refinamento
         </button>
       </nav>
     </aside>

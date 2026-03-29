@@ -284,7 +284,7 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
                   <SelectValue placeholder="Selecione um modelo" />
                 )}
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-60">
                 {currentModels.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
                     {m.name || m.id}

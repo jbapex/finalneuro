@@ -253,7 +253,13 @@ const ImageGeneratorNode = memo(({ data, id }) => {
         setLastError(null);
         toast({ title: 'Imagem gerada com sucesso!' });
         if (typeof onAddImageOutputNode === 'function') {
-          onAddImageOutputNode(id, imageUrl, { runId: result.runId, images, projectId: proj.id, userAiConnectionId: selectedConnectionId });
+          onAddImageOutputNode(id, imageUrl, {
+            runId: result.runId,
+            images,
+            projectId: proj.id,
+            userAiConnectionId: selectedConnectionId,
+            imageGeneratedAt: first.created_at || new Date().toISOString(),
+          });
         }
       } else {
         const desc = 'Nenhuma imagem retornada.';

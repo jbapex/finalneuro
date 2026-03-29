@@ -33,6 +33,23 @@ const FlowsListPage = () => {
   const { toast } = useToast();
   const { user, profile } = useAuth();
 
+  const getCreativeFlowLimit = useCallback(() => {
+    if (profile?.user_type === 'super_admin') return Number.POSITIVE_INFINITY;
+    const raw =
+      profile?.creative_flow_limit ??
+      profile?.plans?.creative_flow_limit ??
+      profile?.plan_image_generation_config?.creative_flow_limit ??
+      profile?.plans?.plan_image_generation_config?.creative_flow_limit ??
+      profile?.max_creative_flows ??
+      profile?.plans?.max_creative_flows;
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+    return 3;
+  }, [profile]);
+
+  const creativeFlowLimit = getCreativeFlowLimit();
+  const hasReachedFlowLimit = Number.isFinite(creativeFlowLimit) && flows.length >= creativeFlowLimit;
+
   const fetchFlows = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
@@ -70,6 +87,14 @@ const FlowsListPage = () => {
   }, [fetchFlows, user, profile, navigate, toast]);
 
   const handleCreateFlow = () => {
+    if (hasReachedFlowLimit) {
+      toast({
+        title: 'Limite de fluxos atingido',
+        description: `Seu plano permite até ${creativeFlowLimit} fluxos criativos. Exclua um fluxo ou solicite liberação de mais.`,
+        variant: 'destructive',
+      });
+      return;
+    }
     navigate('/fluxo-criativo');
   };
   
@@ -122,9 +147,12 @@ const FlowsListPage = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Meus Fluxos Criativos</h1>
-            <p className="text-muted-foreground mt-1">Crie e gerencie seus fluxos de trabalho inteligentes.</p>
+            <p className="text-muted-foreground mt-1">
+              Crie e gerencie seus fluxos de trabalho inteligentes.
+              {Number.isFinite(creativeFlowLimit) ? ` (${flows.length}/${creativeFlowLimit} usados)` : ''}
+            </p>
           </div>
-          <Button className="mt-4 sm:mt-0" onClick={handleCreateFlow}>
+          <Button className="mt-4 sm:mt-0" onClick={handleCreateFlow} disabled={hasReachedFlowLimit}>
             <Plus className="mr-2 h-4 w-4" /> Criar Novo Fluxo
           </Button>
         </div>

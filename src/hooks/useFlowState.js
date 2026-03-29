@@ -9,6 +9,107 @@ import { v4 as uuidv4 } from 'uuid';
 const initialNodes = [];
 const initialEdges = [];
 
+/** Grafo de upstream (puro) — usado para hidratar `inputData` nos nós. */
+function getUpstreamNodesData(nodeId, currentNodes, currentEdges) {
+    const context = {};
+    const visited = new Set();
+    const queue = [nodeId];
+
+    while (queue.length > 0) {
+        const currentId = queue.shift();
+        if (visited.has(currentId)) continue;
+        visited.add(currentId);
+
+        const incomingEdges = currentEdges.filter((edge) => edge.target === currentId);
+        for (const edge of incomingEdges) {
+            const sourceNode = currentNodes.find((n) => n.id === edge.source);
+            if (sourceNode) {
+                let entry = sourceNode.data.output;
+                if (!entry && sourceNode.type === 'subject') {
+                    const d = sourceNode.data;
+                    const hasSubject =
+                        d.subject_gender ||
+                        (typeof d.subject_description === 'string' && d.subject_description.trim()) ||
+                        (Array.isArray(d.subject_image_urls) && d.subject_image_urls.length > 0);
+                    if (hasSubject) {
+                        entry = {
+                            id: sourceNode.id,
+                            data: {
+                                subject_gender: d.subject_gender,
+                                subject_description: typeof d.subject_description === 'string' ? d.subject_description : '',
+                                subject_image_urls: Array.isArray(d.subject_image_urls) ? d.subject_image_urls : [],
+                            },
+                        };
+                    }
+                }
+                if (!entry && (sourceNode.type === 'image_logo' || /^image_logo(_\d+)?$/.test(sourceNode.type))) {
+                    const url = sourceNode.data?.logo_url;
+                    if (typeof url === 'string' && url.trim()) {
+                        entry = { id: sourceNode.id, data: { logo_url: url.trim() } };
+                    }
+                }
+                if (entry) {
+                    let key = sourceNode.type;
+                    if (context[key]) {
+                        let i = 2;
+                        while (context[`${key}_${i}`]) {
+                            i++;
+                        }
+                        key = `${key}_${i}`;
+                    }
+                    context[key] = entry;
+                }
+                if (!visited.has(sourceNode.id)) {
+                    queue.push(sourceNode.id);
+                }
+            }
+        }
+    }
+    return context;
+}
+
+function mergeReferenceAndInputData(nds, currentEdges, refCtx) {
+    const { clients, campaigns, modules, plannings, analyses, presets, knowledgeSources } = refCtx;
+    const newNodes = nds.map((node) => {
+        const inputData = getUpstreamNodesData(node.id, nds, currentEdges);
+        let specificData = {};
+        switch (node.type) {
+            case 'client':
+                specificData = { clients };
+                break;
+            case 'context':
+                specificData = { clients };
+                break;
+            case 'campaign':
+                specificData = { campaigns };
+                break;
+            case 'agent':
+                specificData = { modules, campaigns };
+                break;
+            case 'planning':
+                specificData = { plannings };
+                break;
+            case 'analysis':
+                specificData = { analyses };
+                break;
+            case 'image_generator':
+                specificData = { presets };
+                break;
+            case 'knowledge':
+                specificData = { knowledgeSources };
+                break;
+            default:
+                break;
+        }
+        return { ...node, data: { ...node.data, ...specificData, inputData } };
+    });
+    const inputDataUnchanged = newNodes.every(
+        (n, i) => JSON.stringify(nds[i].data.inputData) === JSON.stringify(n.data.inputData)
+    );
+    if (inputDataUnchanged) return nds;
+    return newNodes;
+}
+
 const getNodeDefaults = (type, position, data) => {
     const baseNode = {
         id: `${type}-${uuidv4()}`,
@@ -29,11 +130,12 @@ export const useFlowState = (flowData) => {
     const [isNamePromptOpen, setIsNamePromptOpen] = useState(false);
     const [newFlowName, setNewFlowName] = useState('');
     const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+    const [isLoadingFlow, setIsLoadingFlow] = useState(false);
 
     const { setViewport, getViewport } = useReactFlow();
     const { flowId } = useParams();
     const navigate = useNavigate();
-    const { user } = useAuth();
+    const { user, profile } = useAuth();
     const { toast } = useToast();
 
     const nodesRef = useRef(nodes);
@@ -56,22 +158,27 @@ export const useFlowState = (flowData) => {
     }, [user, toast]);
 
     const loadFlow = useCallback(async (id) => {
-        const { data, error } = await supabase
-            .from('creative_flows')
-            .select('*')
-            .eq('id', id)
-            .single();
+        setIsLoadingFlow(true);
+        try {
+            const { data, error } = await supabase
+                .from('creative_flows')
+                .select('id, name, user_id, nodes, edges, viewport, updated_at')
+                .eq('id', id)
+                .single();
 
-        if (error) {
-            toast({ title: 'Erro ao carregar fluxo', description: error.message, variant: 'destructive' });
-            navigate('/fluxo-criativo');
-        } else {
-            setActiveFlow(data);
-            setNodes(data.nodes || []);
-            setEdges(data.edges || []);
-            if (data.viewport) {
-                setViewport(data.viewport);
+            if (error) {
+                toast({ title: 'Erro ao carregar fluxo', description: error.message, variant: 'destructive' });
+                navigate('/fluxo-criativo');
+            } else {
+                setActiveFlow(data);
+                setNodes(data.nodes || []);
+                setEdges(data.edges || []);
+                if (data.viewport) {
+                    setViewport(data.viewport);
+                }
             }
+        } finally {
+            setIsLoadingFlow(false);
         }
     }, [setNodes, setEdges, setViewport, toast, navigate]);
 
@@ -89,61 +196,6 @@ export const useFlowState = (flowData) => {
         }
     }, [flowId, loadFlow, setNodes, setEdges]);
 
-    const getUpstreamNodesData = (nodeId, currentNodes, currentEdges) => {
-        const context = {};
-        const visited = new Set();
-        const queue = [nodeId];
-    
-        while (queue.length > 0) {
-            const currentId = queue.shift();
-            if (visited.has(currentId)) continue;
-            visited.add(currentId);
-    
-            const incomingEdges = currentEdges.filter(edge => edge.target === currentId);
-            for (const edge of incomingEdges) {
-                const sourceNode = currentNodes.find(n => n.id === edge.source);
-                if (sourceNode) {
-                    let entry = sourceNode.data.output;
-                    if (!entry && sourceNode.type === 'subject') {
-                        const d = sourceNode.data;
-                        const hasSubject = d.subject_gender || (typeof d.subject_description === 'string' && d.subject_description.trim()) || (Array.isArray(d.subject_image_urls) && d.subject_image_urls.length > 0);
-                        if (hasSubject) {
-                            entry = {
-                                id: sourceNode.id,
-                                data: {
-                                    subject_gender: d.subject_gender,
-                                    subject_description: typeof d.subject_description === 'string' ? d.subject_description : '',
-                                    subject_image_urls: Array.isArray(d.subject_image_urls) ? d.subject_image_urls : [],
-                                },
-                            };
-                        }
-                    }
-                    if (!entry && (sourceNode.type === 'image_logo' || /^image_logo(_\d+)?$/.test(sourceNode.type))) {
-                        const url = sourceNode.data?.logo_url;
-                        if (typeof url === 'string' && url.trim()) {
-                            entry = { id: sourceNode.id, data: { logo_url: url.trim() } };
-                        }
-                    }
-                    if (entry) {
-                        let key = sourceNode.type;
-                        if (context[key]) {
-                            let i = 2;
-                            while (context[`${key}_${i}`]) {
-                                i++;
-                            }
-                            key = `${key}_${i}`;
-                        }
-                        context[key] = entry;
-                    }
-                    if (!visited.has(sourceNode.id)) {
-                        queue.push(sourceNode.id);
-                    }
-                }
-            }
-        }
-        return context;
-    };
-
     const getFreshInputData = useCallback((nodeId) => {
         return getUpstreamNodesData(nodeId, nodesRef.current, edgesRef.current);
     }, []);
@@ -153,14 +205,65 @@ export const useFlowState = (flowData) => {
     }, [setEdges]);
 
     const updateNodeData = useCallback((nodeId, newData) => {
-        setNodes((nds) =>
-            nds.map((node) =>
-                node.id === nodeId
-                    ? { ...node, data: { ...node.data, ...newData } }
-                    : node
-            )
+        setNodes((nds) => {
+            const next = nds.map((node) =>
+                node.id === nodeId ? { ...node, data: { ...node.data, ...newData } } : node
+            );
+            return mergeReferenceAndInputData(next, edgesRef.current, {
+                clients,
+                campaigns,
+                modules,
+                plannings,
+                analyses,
+                presets,
+                knowledgeSources,
+            });
+        });
+    }, [setNodes, clients, campaigns, modules, plannings, analyses, presets, knowledgeSources]);
+
+    /** Remove o nó e arestas ligadas; se vier de um carrossel (handle slide-N), limpa a lâmina. */
+    const removeNode = useCallback((nodeId) => {
+        const currentEdges = edgesRef.current;
+        const currentNodes = nodesRef.current;
+        const incoming = currentEdges.filter((e) => e.target === nodeId);
+        const nextEdges = currentEdges.filter((e) => e.source !== nodeId && e.target !== nodeId);
+        let nextNodes = currentNodes.filter((n) => n.id !== nodeId);
+
+        for (const edge of incoming) {
+            const sourceNode = currentNodes.find((n) => n.id === edge.source);
+            if (!sourceNode || sourceNode.type !== 'carousel') continue;
+            const m = String(edge.sourceHandle || '').match(/^slide-(\d+)$/);
+            if (!m) continue;
+            const slideIdx = parseInt(m[1], 10);
+            const prevSlides = sourceNode.data?.slides;
+            if (!Array.isArray(prevSlides) || slideIdx < 0 || slideIdx >= prevSlides.length) continue;
+            const slides = prevSlides.map((s, i) => {
+                if (i !== slideIdx) return s;
+                const copy = { ...(s || {}) };
+                delete copy.imageUrl;
+                delete copy.runId;
+                delete copy.imageId;
+                delete copy.projectId;
+                return copy;
+            });
+            nextNodes = nextNodes.map((n) =>
+                n.id === sourceNode.id ? { ...n, data: { ...n.data, slides } } : n
+            );
+        }
+
+        setEdges(nextEdges);
+        setNodes(
+            mergeReferenceAndInputData(nextNodes, nextEdges, {
+                clients,
+                campaigns,
+                modules,
+                plannings,
+                analyses,
+                presets,
+                knowledgeSources,
+            })
         );
-    }, [setNodes]);
+    }, [setNodes, setEdges, clients, campaigns, modules, plannings, analyses, presets, knowledgeSources]);
 
     const addNode = useCallback((type, label) => {
         const position = { x: Math.random() * 400, y: Math.random() * 400 };
@@ -257,48 +360,36 @@ export const useFlowState = (flowData) => {
         });
     }, [setNodes, setEdges]);
 
+    // Hidrata listas (clientes, módulos…) e `inputData` quando mudam dados de referência, arestas ou o fluxo ativo.
+    // Importante: NÃO depender de `nodes` aqui — senão cada arraste no canvas reexecuta O(n²) e deixa a troca de fluxo lenta.
     useEffect(() => {
-        setNodes((nds) => {
-            const newNodes = nds.map((node) => {
-                const inputData = getUpstreamNodesData(node.id, nds, edges);
-                let specificData = {};
-                switch (node.type) {
-                    case 'client':
-                        specificData = { clients };
-                        break;
-                    case 'context':
-                        specificData = { clients };
-                        break;
-                    case 'campaign':
-                        specificData = { campaigns };
-                        break;
-                    case 'agent':
-                        specificData = { modules, campaigns };
-                        break;
-                    case 'planning':
-                        specificData = { plannings };
-                        break;
-                    case 'analysis':
-                        specificData = { analyses };
-                        break;
-                    case 'image_generator':
-                        specificData = { presets };
-                        break;
-                    case 'knowledge':
-                        specificData = { knowledgeSources };
-                        break;
-                    default:
-                        break;
-                }
-                return { ...node, data: { ...node.data, ...specificData, inputData } };
-            });
-            const inputDataUnchanged = newNodes.every(
-                (n, i) => JSON.stringify(nds[i].data.inputData) === JSON.stringify(n.data.inputData)
-            );
-            if (inputDataUnchanged) return nds;
-            return newNodes;
-        });
-    }, [clients, campaigns, modules, plannings, analyses, presets, knowledgeSources, edges, nodes, setNodes]);
+        if (flowId && (!activeFlow || String(activeFlow.id) !== String(flowId))) {
+            return;
+        }
+        setNodes((nds) =>
+            mergeReferenceAndInputData(nds, edges, {
+                clients,
+                campaigns,
+                modules,
+                plannings,
+                analyses,
+                presets,
+                knowledgeSources,
+            })
+        );
+    }, [
+        clients,
+        campaigns,
+        modules,
+        plannings,
+        analyses,
+        presets,
+        knowledgeSources,
+        edges,
+        activeFlow?.id,
+        flowId,
+        setNodes,
+    ]);
 
     const handleSaveFlow = async (flowName) => {
         if (!user) return;
@@ -320,6 +411,25 @@ export const useFlowState = (flowData) => {
                 fetchFlows();
             }
         } else if (flowName) {
+            const rawLimit =
+                profile?.creative_flow_limit ??
+                profile?.plans?.creative_flow_limit ??
+                profile?.plan_image_generation_config?.creative_flow_limit ??
+                profile?.plans?.plan_image_generation_config?.creative_flow_limit ??
+                profile?.max_creative_flows ??
+                profile?.plans?.max_creative_flows;
+            const parsedLimit = Number(rawLimit);
+            const creativeFlowLimit = profile?.user_type === 'super_admin'
+                ? Number.POSITIVE_INFINITY
+                : (Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : 3);
+            if (Number.isFinite(creativeFlowLimit) && flows.length >= creativeFlowLimit) {
+                toast({
+                    title: 'Limite de fluxos atingido',
+                    description: `Seu plano permite até ${creativeFlowLimit} fluxos criativos. Exclua um fluxo ou solicite liberação de mais.`,
+                    variant: 'destructive',
+                });
+                return;
+            }
             setIsSaving(true);
             const { data, error } = await supabase
                 .from('creative_flows')
@@ -398,6 +508,7 @@ export const useFlowState = (flowData) => {
         onEdgesChange,
         onConnect,
         updateNodeData,
+        removeNode,
         addNode,
         addImageOutputNode,
         addAgentOutputNode,
@@ -409,5 +520,6 @@ export const useFlowState = (flowData) => {
         handleDeleteFlow,
         confirmDeleteFlow,
         refreshFlowData,
+        isLoadingFlow,
     };
 };

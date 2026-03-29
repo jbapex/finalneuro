@@ -31,6 +31,7 @@ const FlowCanvas = ({
     onEdgesChange,
     onConnect,
     updateNodeData,
+    removeNode,
     onAddImageOutputNode,
     onAddAgentOutputNode,
     onAddCarouselSlideImageNode,
@@ -46,7 +47,9 @@ const FlowCanvas = ({
         planning: (props) => <PlanningNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         analysis: (props) => <AnalysisNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         image_generator: (props) => <ImageGeneratorNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData, onAddImageOutputNode, getFreshInputData }} />,
-        generated_image: (props) => <GeneratedImageNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
+        generated_image: (props) => (
+            <GeneratedImageNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData, onRemoveNode: removeNode }} />
+        ),
         generated_content: GeneratedContentNode,
         carousel: (props) => <CarouselNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData, onAddCarouselSlideImageNode, getFreshInputData }} />,
         video_transcriber: (props) => <VideoTranscriberNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
@@ -58,7 +61,7 @@ const FlowCanvas = ({
         colors: (props) => <ColorsNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         styles: (props) => <StylesNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
         subject: (props) => <SubjectNode {...props} data={{ ...props.data, onUpdateNodeData: updateNodeData }} />,
-    }), [updateNodeData, onAddImageOutputNode, onAddAgentOutputNode, onAddCarouselSlideImageNode, getFreshInputData, onRefreshData]);
+    }), [updateNodeData, removeNode, onAddImageOutputNode, onAddAgentOutputNode, onAddCarouselSlideImageNode, getFreshInputData, onRefreshData]);
 
     const edgeTypes = useMemo(() => ({
         custom: CustomEdge,
