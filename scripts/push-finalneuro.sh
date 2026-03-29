@@ -33,7 +33,17 @@ fi
 
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
   echo "Push via HTTPS (token) → finalneuro..."
-  git push "https://oauth2:${GITHUB_TOKEN}@github.com/jbapex/finalneuro.git" main --force-with-lease
+  git fetch finalneuro main 2>/dev/null || true
+  EXPECT=""
+  if git rev-parse finalneuro/main &>/dev/null; then
+    EXPECT=$(git rev-parse finalneuro/main)
+  fi
+  if [[ -n "$EXPECT" ]]; then
+    git push "https://oauth2:${GITHUB_TOKEN}@github.com/jbapex/finalneuro.git" main \
+      --force-with-lease="refs/heads/main:${EXPECT}"
+  else
+    git push "https://oauth2:${GITHUB_TOKEN}@github.com/jbapex/finalneuro.git" main
+  fi
   git branch --set-upstream-to=finalneuro/main main 2>/dev/null || true
   echo "Concluído."
   exit 0
