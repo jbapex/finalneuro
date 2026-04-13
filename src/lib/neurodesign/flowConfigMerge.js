@@ -3,6 +3,10 @@
  * monta um objeto de config overrides para neurodesign-generate.
  * Usado pelo ImageGeneratorNode, CarouselNode e NeuroDesignFlowModal.
  *
+ * Incluir no `initialConfig` do Neuro Designer (após o snapshot guardado) faz com que
+ * sujeito, referência, cores, estilo e logo dos nós ligados apareçam na configuração
+ * assim que a ligação existe — sem precisar reabrir manualmente.
+ *
  * @param {Object} inputData - inputData do nó (getUpstreamNodesData)
  * @returns {Object} - overrides para merge na config (apenas chaves definidas)
  */

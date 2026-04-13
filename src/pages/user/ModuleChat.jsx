@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { supabase } from '@/lib/customSupabaseClient';
@@ -8,8 +8,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { ChevronLeft, Loader2, Sparkles, Star, Copy, Link2, Eye, Wand2, FileText, Plus, Edit } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ChevronLeft, ChevronDown, Loader2, Sparkles, Star, Copy, Link2, Eye, Wand2, FileText, Plus, Edit } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import EditWithAiModal from '@/components/strategic-planner/EditWithAiModal';
 import ReactMarkdown from 'react-markdown';
@@ -18,10 +20,15 @@ import NeuralNetworkCanvas from '@/components/ui/NeuralNetworkCanvas';
 
 const CONTEXT_INSTRUCTION = `Na mensagem do usuário pode aparecer um bloco [CONTEXTO] com dados do módulo, cliente, campanha e documentos de contexto. Use sempre essas informações para personalizar e fundamentar sua resposta. Não peça ao usuário dados que já constem no [CONTEXTO].`;
 
-import { getFriendlyErrorMessage } from '@/lib/utils';
+import { getFriendlyErrorMessage, cn } from '@/lib/utils';
 
-const ModuleChat = () => {
-  const { moduleId } = useParams();
+/**
+ * @param {{ moduleId?: string | number, embedMode?: boolean, onBack?: () => void, rootClassName?: string }} props
+ * Sem `moduleId`: usa a rota `useParams().moduleId` (página completa do gerador).
+ */
+export function ModuleChatEmbeddable({ moduleId: moduleIdProp, embedMode = false, onBack, rootClassName }) {
+  const params = useParams();
+  const moduleId = moduleIdProp != null && moduleIdProp !== '' ? String(moduleIdProp) : params.moduleId;
   const { toast } = useToast();
   const navigate = useNavigate();
   const { user, profile, loading: authLoading, hasPermission } = useAuth();
@@ -36,7 +43,8 @@ const ModuleChat = () => {
   const [contextDraftName, setContextDraftName] = useState('');
   const [contextDraftContent, setContextDraftContent] = useState('');
   const [contextDocuments, setContextDocuments] = useState([]);
-  const [selectedContextValue, setSelectedContextValue] = useState('__none__');
+  /** IDs de `client_contexts` a incluir na geração (vários permitidos) */
+  const [selectedContextIds, setSelectedContextIds] = useState([]);
   const [isSavingContext, setIsSavingContext] = useState(false);
   const [complementaryText, setComplementaryText] = useState('');
   const [generatedContent, setGeneratedContent] = useState('');
@@ -55,16 +63,26 @@ const ModuleChat = () => {
   // IA: seleção explícita pelo usuário na tela
   const [selectedIaKey, setSelectedIaKey] = useState(''); // formato: user:<id> | global:<id>
 
+  const embedModeRef = useRef(embedMode);
+  const onBackRef = useRef(onBack);
+  embedModeRef.current = embedMode;
+  onBackRef.current = onBack;
+
   const fetchModuleDetails = useCallback(async () => {
-    if (!moduleId || isNaN(parseInt(moduleId))) return;
-    
+    if (!moduleId || isNaN(parseInt(moduleId))) {
+      setIsLoadingModule(false);
+      setModule(null);
+      return;
+    }
+
     setIsLoadingModule(true);
 
     const isAllowed = hasPermission('module_access', parseInt(moduleId));
 
     if (!isAllowed) {
         toast({ title: "Acesso Negado", description: "Este módulo não está incluído no seu plano.", variant: "destructive" });
-        navigate('/ferramentas/gerador-de-conteudo');
+        if (embedModeRef.current && typeof onBackRef.current === 'function') onBackRef.current();
+        else navigate('/ferramentas/gerador-de-conteudo');
         setIsLoadingModule(false);
         return;
     }
@@ -78,7 +96,8 @@ const ModuleChat = () => {
     if (error || !moduleData) {
       toast({ title: 'Erro ao carregar módulo', description: error?.message || "Módulo não encontrado.", variant: 'destructive' });
       setModule(null);
-      navigate("/ferramentas/gerador-de-conteudo");
+      if (embedModeRef.current && typeof onBackRef.current === 'function') onBackRef.current();
+      else navigate("/ferramentas/gerador-de-conteudo");
     } else {
       const defaultConfig = { use_client: false, use_campaign: true, use_complementary_text: true };
       setModule({ ...moduleData, config: moduleData.config ? moduleData.config : defaultConfig });
@@ -229,7 +248,7 @@ const ModuleChat = () => {
   const fetchContextDocuments = useCallback(async () => {
     if (!clientForContext?.id) {
       setContextDocuments([]);
-      setSelectedContextValue('__none__');
+      setSelectedContextIds([]);
       return;
     }
     const { data, error } = await supabase
@@ -240,7 +259,8 @@ const ModuleChat = () => {
     if (!error) {
       const list = data || [];
       setContextDocuments(list);
-      setSelectedContextValue(list.length > 0 ? '__all__' : '__none__');
+      // Nada pré-selecionado: o utilizador escolhe explicitamente quais contextos usar
+      setSelectedContextIds([]);
     }
   }, [clientForContext?.id]);
 
@@ -271,8 +291,38 @@ const ModuleChat = () => {
     toast({ title: 'Contexto salvo', description: 'Novo documento de contexto adicionado.' });
     setContextModalOpen(false);
     setContextDocuments((prev) => [data, ...prev]);
-    setSelectedContextValue(String(data.id));
+    setSelectedContextIds((prev) => (prev.includes(String(data.id)) ? prev : [...prev, String(data.id)]));
   };
+
+  const toggleContextSelection = (contextId, checked) => {
+    const sid = String(contextId);
+    setSelectedContextIds((prev) => {
+      if (checked) return prev.includes(sid) ? prev : [...prev, sid];
+      return prev.filter((x) => x !== sid);
+    });
+  };
+
+  const selectAllContextDocuments = () => {
+    setSelectedContextIds(contextDocuments.map((c) => String(c.id)));
+  };
+
+  const clearContextDocumentSelection = () => {
+    setSelectedContextIds([]);
+  };
+
+  const contextDropdownSummary = useMemo(() => {
+    if (contextDocuments.length === 0) {
+      return { label: 'Nenhum contexto — use + para adicionar', muted: true };
+    }
+    if (selectedContextIds.length === 0) {
+      return { label: 'Selecione os contextos…', muted: true };
+    }
+    if (selectedContextIds.length === 1) {
+      const doc = contextDocuments.find((d) => String(d.id) === selectedContextIds[0]);
+      return { label: doc?.name?.trim() || 'Sem título', muted: false };
+    }
+    return { label: `${selectedContextIds.length} contextos selecionados`, muted: false };
+  }, [contextDocuments, selectedContextIds]);
 
   const isGenerateButtonDisabled = () => {
     if (isLoading) return true;
@@ -352,11 +402,8 @@ const ModuleChat = () => {
             if (module?.name) contextLines.push(`Módulo: ${module.name}`);
             if (selectedClient?.name) contextLines.push(`Cliente: ${selectedClient.name}`);
             if (selectedCampaign?.name) contextLines.push(`Campanha: ${selectedCampaign.name}`);
-            if (clientForContext?.id && selectedContextValue && selectedContextValue !== '__none__') {
-              const contextList =
-                selectedContextValue === '__all__'
-                  ? contextDocuments
-                  : contextDocuments.filter((c) => String(c.id) === selectedContextValue);
+            if (clientForContext?.id && selectedContextIds.length > 0) {
+              const contextList = contextDocuments.filter((c) => selectedContextIds.includes(String(c.id)));
               if (contextList.length) {
                 const contextBlock = contextList
                   .map((c) => (c.name ? `[${c.name}]\n${c.content || ''}` : (c.content || '')))
@@ -469,26 +516,50 @@ const ModuleChat = () => {
     return <div className="flex items-center justify-center h-full"><Loader2 className="w-16 h-16 animate-spin text-primary" /></div>;
   }
   if (!module) {
-    return <div className="text-center p-8">
+    return (
+      <div className="text-center p-8">
         <h2 className="text-2xl font-bold">Módulo não encontrado</h2>
         <p className="text-muted-foreground">O módulo que você está tentando acessar não existe ou não está disponível para você.</p>
-        <Button asChild className="mt-4"><Link to="/ferramentas/gerador-de-conteudo">Voltar para a lista de Agentes</Link></Button>
-      </div>;
+        {embedMode ? (
+          <Button type="button" className="mt-4" onClick={() => onBack?.()}>
+            Voltar aos Experts
+          </Button>
+        ) : (
+          <Button asChild className="mt-4">
+            <Link to="/ferramentas/gerador-de-conteudo">Voltar para a lista de Agentes</Link>
+          </Button>
+        )}
+      </div>
+    );
   }
 
   return (
-    <div className="flex flex-col h-full max-h-[calc(100vh-4rem)] bg-background text-foreground">
-      <header className="flex items-center p-4 border-b">
-        <Button asChild variant="ghost" size="icon" className="mr-4">
-          <Link to="/ferramentas/gerador-de-conteudo"><ChevronLeft className="w-5 h-5" /></Link>
-        </Button>
+    <div
+      className={cn(
+        'flex flex-col h-full bg-background text-foreground min-h-0',
+        embedMode ? 'max-h-full overflow-hidden' : 'max-h-[calc(100vh-4rem)]',
+        rootClassName,
+      )}
+    >
+      <header className="flex items-center shrink-0 p-3 sm:p-4 border-b">
+        {embedMode ? (
+          <Button type="button" variant="ghost" size="icon" className="mr-3 shrink-0" onClick={() => onBack?.()}>
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+        ) : (
+          <Button asChild variant="ghost" size="icon" className="mr-4">
+            <Link to="/ferramentas/gerador-de-conteudo">
+              <ChevronLeft className="w-5 h-5" />
+            </Link>
+          </Button>
+        )}
         <div>
           <h1 className="text-xl font-bold">{module.name}</h1>
           <p className="text-sm text-muted-foreground">{module.description}</p>
         </div>
       </header>
 
-      <div className="flex-1 grid md:grid-cols-2 gap-8 p-8 overflow-y-auto">
+      <div className="flex-1 min-h-0 grid md:grid-cols-2 gap-4 md:gap-8 p-4 md:p-8 overflow-y-auto">
         <motion.div initial={{ x: -50, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ duration: 0.5 }}>
           <Card className="h-full">
             <CardHeader>
@@ -545,24 +616,77 @@ const ModuleChat = () => {
                 )}
                 {clientForContext && (
                   <div className="space-y-2">
-                    <Label htmlFor="context-select" className="flex items-center gap-2"><FileText className="w-4 h-4" /> Contexto (opcional)</Label>
+                    <Label className="flex items-center gap-2">
+                      <FileText className="w-4 h-4" /> Contextos (opcional)
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Abra a lista e marque quais documentos deste cliente a IA deve usar.
+                    </p>
                     <div className="flex gap-2">
-                      <Select
-                        id="context-select"
-                        value={selectedContextValue}
-                        onValueChange={setSelectedContextValue}
-                        disabled={contextDocuments.length === 0}
-                      >
-                        <SelectTrigger className="w-full"><SelectValue placeholder="Selecione qual contexto usar..." /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">Nenhum</SelectItem>
-                          {contextDocuments.length > 1 && <SelectItem value="__all__">Todos ({contextDocuments.length})</SelectItem>}
-                          {contextDocuments.map((c) => (
-                            <SelectItem key={c.id} value={String(c.id)}>{c.name || 'Sem título'}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button type="button" variant="outline" size="sm" onClick={openContextEditor} className="shrink-0">
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            role="combobox"
+                            disabled={contextDocuments.length === 0}
+                            className={cn(
+                              'h-10 min-h-10 w-full flex-1 justify-between font-normal px-3',
+                              contextDropdownSummary.muted && 'text-muted-foreground'
+                            )}
+                          >
+                            <span className="truncate text-left">{contextDropdownSummary.label}</span>
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="w-[var(--radix-popover-trigger-width)] max-w-[min(calc(100vw-2rem),24rem)] p-0"
+                          align="start"
+                        >
+                          {contextDocuments.length > 1 ? (
+                            <div className="flex items-center justify-end gap-1 border-b px-2 py-1.5 text-xs">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-muted-foreground"
+                                onClick={selectAllContextDocuments}
+                              >
+                                Todos
+                              </Button>
+                              <span className="text-muted-foreground/40" aria-hidden>
+                                ·
+                              </span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-muted-foreground"
+                                onClick={clearContextDocumentSelection}
+                              >
+                                Nenhum
+                              </Button>
+                            </div>
+                          ) : null}
+                          <div className="max-h-[min(280px,50vh)] overflow-y-auto p-2 space-y-0.5">
+                            {contextDocuments.map((c) => (
+                              <label
+                                key={c.id}
+                                className="flex cursor-pointer items-start gap-2 rounded-sm px-2 py-2 text-sm leading-snug hover:bg-muted/60"
+                              >
+                                <Checkbox
+                                  id={`ctx-${c.id}`}
+                                  checked={selectedContextIds.includes(String(c.id))}
+                                  onCheckedChange={(v) => toggleContextSelection(c.id, v === true)}
+                                  className="mt-0.5"
+                                />
+                                <span className="min-w-0 flex-1">{c.name || 'Sem título'}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                      <Button type="button" variant="outline" size="icon" onClick={openContextEditor} className="h-10 w-10 shrink-0" title="Adicionar contexto">
                         <Plus className="w-4 h-4" />
                       </Button>
                     </div>
@@ -712,6 +836,8 @@ const ModuleChat = () => {
       </Dialog>
     </div>
   );
-};
+}
 
-export default ModuleChat;
+export default function ModuleChat() {
+  return <ModuleChatEmbeddable />;
+}

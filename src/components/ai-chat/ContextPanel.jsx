@@ -34,8 +34,18 @@ import {
  * - user: objeto de usuário atual (precisamos de user.id)
  * - selectedContextIds: number[] ids de client_contexts selecionados para este chat
  * - onChangeSelected: (ids: number[]) => void
+ * - selectedClientProfileIds: number[] ids de clients cuja ficha de cadastro entra no contexto
+ * - onChangeSelectedClientProfiles: (ids: number[]) => void
  */
-const ContextPanel = ({ open, onClose, user, selectedContextIds = [], onChangeSelected }) => {
+const ContextPanel = ({
+  open,
+  onClose,
+  user,
+  selectedContextIds = [],
+  onChangeSelected,
+  selectedClientProfileIds = [],
+  onChangeSelectedClientProfiles,
+}) => {
   const { toast } = useToast();
 
   const [isLoadingClients, setIsLoadingClients] = useState(false);
@@ -135,6 +145,15 @@ const ContextPanel = ({ open, onClose, user, selectedContextIds = [], onChangeSe
       ? selectedContextIds.filter((id) => id !== contextId)
       : [...selectedContextIds, contextId];
     onChangeSelected(next);
+  };
+
+  const handleToggleClientProfile = (clientId) => {
+    if (!onChangeSelectedClientProfiles) return;
+    const exists = selectedClientProfileIds.includes(clientId);
+    const next = exists
+      ? selectedClientProfileIds.filter((id) => id !== clientId)
+      : [...selectedClientProfileIds, clientId];
+    onChangeSelectedClientProfiles(next);
   };
 
   const startCreateContext = () => {
@@ -316,25 +335,45 @@ const ContextPanel = ({ open, onClose, user, selectedContextIds = [], onChangeSe
                       {filteredClients.map((client) => {
                         const isActive = client.id === selectedClientId;
                         return (
-                          <button
+                          <div
                             key={client.id}
-                            type="button"
-                            onClick={() => handleSelectClient(client.id)}
                             className={[
-                              'flex items-center justify-between rounded-xl border px-3 py-2 text-left transition-colors',
+                              'flex items-center gap-2 rounded-xl border px-2 py-1.5 transition-colors',
                               isActive
                                 ? 'bg-primary/10 border-primary text-foreground'
                                 : 'bg-muted/40 hover:bg-muted border-border',
                             ].join(' ')}
                           >
-                            <div className="flex items-center gap-2">
-                              <Folder className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm font-medium truncate">{client.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleSelectClient(client.id)}
+                              className="flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg py-1 pl-1 pr-0 text-left"
+                            >
+                              <div className="flex min-w-0 items-center gap-2">
+                                <Folder className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                <span className="truncate text-sm font-medium">{client.name}</span>
+                              </div>
+                              <span className="shrink-0 text-[11px] font-semibold rounded-full bg-background px-2 py-0.5 text-muted-foreground">
+                                {client.contextCount ?? 0}
+                              </span>
+                            </button>
+                            <div
+                              className="flex shrink-0 flex-col items-center gap-0.5 border-l border-border/60 pl-2"
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => e.stopPropagation()}
+                              role="presentation"
+                              title="Incluir dados da ficha de cadastro deste cliente no chat"
+                            >
+                              <span className="text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                                Ficha
+                              </span>
+                              <Switch
+                                checked={selectedClientProfileIds.includes(client.id)}
+                                onCheckedChange={() => handleToggleClientProfile(client.id)}
+                                aria-label={`Incluir ficha de ${client.name || 'cliente'} no contexto`}
+                              />
                             </div>
-                            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-background text-muted-foreground">
-                              {client.contextCount ?? 0}
-                            </span>
-                          </button>
+                          </div>
                         );
                       })}
                     </div>

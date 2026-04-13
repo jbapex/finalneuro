@@ -6,6 +6,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import ModuleForm from './modules/ModuleForm';
 import ModuleCard from './modules/ModuleCard';
+import { prepareModuleConfigForEditor, normalizeGeneratorCategoriesForSave } from '@/lib/modules/generatorCategories';
 
 const ModulesManagement = () => {
   const { toast } = useToast();
@@ -24,6 +25,7 @@ const ModulesManagement = () => {
       use_client: false,
       use_campaign: true,
       use_complementary_text: true,
+      generator_categories: ['geral'],
     },
     suggested_module_ids: [],
   };
@@ -65,13 +67,16 @@ const ModulesManagement = () => {
     if (moduleToEdit) {
       setEditingModule(moduleToEdit);
       
-      const defaultConfig = { 
-        use_client: false, 
+      const defaultConfig = {
+        use_client: false,
         use_campaign: true,
-        use_complementary_text: true 
+        use_complementary_text: true,
       };
-      
-      const finalConfig = { ...defaultConfig, ...(moduleToEdit.config || {}) };
+
+      const finalConfig = prepareModuleConfigForEditor({
+        ...defaultConfig,
+        ...(moduleToEdit.config || {}),
+      });
 
       setFormData({
         name: moduleToEdit.name || '',
@@ -83,10 +88,11 @@ const ModulesManagement = () => {
       });
     } else {
       setEditingModule(null);
-      const baseConfig = { 
-        use_client: false, 
+      const baseConfig = {
+        use_client: false,
         use_campaign: true,
-        use_complementary_text: true 
+        use_complementary_text: true,
+        generator_categories: ['geral'],
       };
       setFormData({ ...initialFormData, config: baseConfig });
     }
@@ -124,7 +130,7 @@ const ModulesManagement = () => {
       description: moduleData.description,
       base_prompt: moduleData.base_prompt,
       llm_integration_id: moduleData.llm_integration_id,
-      config: moduleData.config,
+      config: normalizeGeneratorCategoriesForSave(moduleData.config),
     };
     
     let response;

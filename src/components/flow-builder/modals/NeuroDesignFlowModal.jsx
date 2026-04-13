@@ -13,6 +13,11 @@ import { X } from 'lucide-react';
 import BuilderPanel from '@/components/neurodesign/BuilderPanel';
 import PreviewPanel from '@/components/neurodesign/PreviewPanel';
 import { mergeFlowInputDataIntoConfig } from '@/lib/neurodesign/flowConfigMerge';
+import { mergeNeuroDesignDefaults } from '@/lib/neurodesign/defaultConfig';
+import {
+  NEURODESIGN_FILL_FROM_BRIEF_SYSTEM_PROMPT,
+  clipAdditionalPromptFromFill,
+} from '@/lib/neurodesign/fillFromBriefPrompt';
 import { useNeurodesignExpiredCleanup } from '@/hooks/useNeurodesignExpiredCleanup';
 
 function buildFlowContextText(inputData) {
@@ -101,7 +106,24 @@ function normalizeImageSizeVal(v) {
   return null;
 }
 
-const NeuroDesignFlowModal = ({ open, onOpenChange, inputData, onResult, embedded, onCollapse, initialConfig }) => {
+/** Modo só formulário no nó do fluxo (sem pré-visualização / geração aqui). */
+export const NEURO_DESIGN_FLOW_RENDER_MODE = {
+  CONFIG_ONLY: 'flow-config-only',
+};
+
+const NeuroDesignFlowModal = ({
+  open,
+  onOpenChange,
+  inputData,
+  onResult,
+  /** @deprecated use renderMode={NEURO_DESIGN_FLOW_RENDER_MODE.CONFIG_ONLY} */
+  embedded,
+  /** 'flow-config-only' = só coluna de configuração + Salvar e voltar (nó Gerador de Imagem) */
+  renderMode,
+  onCollapse,
+  onEmbeddedSave,
+  initialConfig,
+}) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [project, setProject] = useState(null);
@@ -118,7 +140,10 @@ const NeuroDesignFlowModal = ({ open, onOpenChange, inputData, onResult, embedde
   const generatingRef = useRef(false);
   const refiningRef = useRef(false);
 
-  const isVisible = embedded ? true : open;
+  const isFlowConfigOnly =
+    renderMode === NEURO_DESIGN_FLOW_RENDER_MODE.CONFIG_ONLY || embedded === true;
+
+  const isVisible = isFlowConfigOnly ? true : open;
   const inputDataSnapshot = useMemo(() => (isVisible && inputData ? { ...inputData } : null), [isVisible, inputData]);
 
   useNeurodesignExpiredCleanup({
@@ -231,15 +256,20 @@ const NeuroDesignFlowModal = ({ open, onOpenChange, inputData, onResult, embedde
     if (isVisible && project) {
       setCurrentConfig(initialConfig ?? null);
       setSelectedImage(null);
-      fetchRuns(project.id);
-      fetchImages(project.id);
+      if (!isFlowConfigOnly) {
+        fetchRuns(project.id);
+        fetchImages(project.id);
+      } else {
+        setRuns([]);
+        setImages([]);
+      }
     } else if (!isVisible) {
       setRuns([]);
       setImages([]);
       setSelectedImage(null);
       setCurrentConfig(null);
     }
-  }, [isVisible, project, initialConfig, fetchRuns, fetchImages]);
+  }, [isVisible, project, initialConfig, fetchRuns, fetchImages, isFlowConfigOnly]);
 
   const handleGenerate = useCallback(async (config) => {
     if (generatingRef.current) return;
@@ -324,6 +354,7 @@ const NeuroDesignFlowModal = ({ open, onOpenChange, inputData, onResult, embedde
     const selectionText = typeof payload === 'object' && payload !== null ? payload.selectionText : undefined;
     const selectionFont = typeof payload === 'object' && payload !== null ? payload.selectionFont : undefined;
     const selectionFontStyle = typeof payload === 'object' && payload !== null ? payload.selectionFontStyle : undefined;
+    const improveQuality = typeof payload === 'object' && payload !== null && payload.improveQuality === true;
 
     refiningRef.current = true;
     setIsRefining(true);
@@ -345,6 +376,7 @@ const NeuroDesignFlowModal = ({ open, onOpenChange, inputData, onResult, embedde
       if (selectionText) body.selectionText = selectionText;
       if (selectionFont) body.selectionFont = selectionFont;
       if (selectionFontStyle) body.selectionFontStyle = selectionFontStyle;
+      if (improveQuality) body.improveQuality = true;
 
       const refineConn = imageConnections.find((c) => c.id === currentConfig?.user_ai_connection_id);
       const isGoogleRefine = refineConn?.provider?.toLowerCase() === 'google';
@@ -387,47 +419,17 @@ const NeuroDesignFlowModal = ({ open, onOpenChange, inputData, onResult, embedde
       toast({ title: 'Nenhuma conexão de IA ativa', description: 'Configure uma conexão em Minha IA.', variant: 'destructive' });
       return;
     }
-    const systemPrompt = `Você é um assistente que extrai dados estruturados de briefs/prompts criativos para preencher um formulário de geração de imagem (NeuroDesign).
-Responda APENAS com um único objeto JSON válido. Sem markdown, sem \`\`\`json, sem texto antes ou depois do objeto.
-Extraia o máximo de informações do texto. Para valores não mencionados, omita a chave.
-Mapeamento de termos comuns:
-- Formato: "feed" ou "quadrado" -> dimensions "1:1"; "stories" ou "vertical" -> "9:16"; "horizontal" ou "banner" -> "16:9"; "4:5" ou "retrato feed" -> "4:5"
-- Plano: "close" ou "rosto" -> shot_type "close-up"; "médio" ou "busto" -> "medio busto"; "americano" ou "corpo inteiro" -> "americano"
-- Qualidade: "alta" ou "2k" ou "alta resolução" -> image_size "2K"; "máxima" ou "4k" -> "4K"; caso contrário use "1K"
-ESTÉTICA PROFISSIONAL (brief de social/ads, agência, posicionamento, "não parecer IA"):
-- Defina ultra_realistic: true e sobriety entre 75 e 95.
-- Retrato com fundo contextual: blur_enabled: true quando fizer sentido.
-- Em additional_prompt preserve em português luz (rim, low-key, chiaroscuro), textura, colagem, glass, 3D fotorreal, composição e anti-padrões de IA genérica — a geração usa esse campo.
-Chaves e valores exatos obrigatórios (use exatamente assim no JSON):
-- subject_gender: "masculino" ou "feminino"
-- subject_description: string (pose, roupa, expressão)
-- niche_project: string (nicho do negócio/projeto)
-- environment: string (cenário, ambiente, local)
-- shot_type: exatamente "close-up" ou "medio busto" ou "americano"
-- layout_position: exatamente "esquerda" ou "centro" ou "direita"
-- dimensions: exatamente "1:1" ou "4:5" ou "9:16" ou "16:9"
-- image_size: exatamente "1K" ou "2K" ou "4K" (qualidade da imagem)
-- text_enabled: true ou false. Se true, preencha headline_h1, subheadline_h2, cta_button_text. Para texto corrido/parágrafo use text_mode "free" e custom_text.
-- text_mode: "structured" ou "free". Use "free" quando o brief pedir texto corrido, parágrafo ou bloco na imagem (ex.: card, post); use "structured" para título, subtítulo e botão (headline, subheadline, CTA).
-- custom_text: string; quando text_mode for "free", o texto completo a aparecer na imagem.
-- custom_text_font_description: string opcional; descrição da fonte (ex.: "sans serifa, negrito", "moderna").
-- use_reference_image_text: boolean; true se o brief indicar que o texto deve ser copiado/extraído da imagem de referência.
-- text_position: "esquerda" ou "centro" ou "direita"
-- visual_attributes: objeto com style_tags (array só com: clássico, formal, elegante, institucional, tecnológico, minimalista, criativo), sobriety (número 0-100), ultra_realistic, blur_enabled, lateral_gradient_enabled (boolean)
-- additional_prompt: complementos técnicos apenas; o texto colado pelo usuário será anexado automaticamente ao gerar.
-- ambient_color, rim_light_color, fill_light_color: string (cor em hex #RRGGBB ou descrição)
-- floating_elements_enabled: boolean, floating_elements_text: string (elementos flutuantes)
-- subject_enabled: boolean; subject_mode: "person" ou "product"; quantity: 1 a 5
-Responda somente com o JSON.`;
-
     setIsFillingFromPrompt(true);
     try {
       const { data, error } = await supabase.functions.invoke('generic-ai-chat', {
         body: JSON.stringify({
           session_id: null,
           messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Preencha os campos do NeuroDesign com base no seguinte brief/prompt:\n\n${trimmed}` },
+            { role: 'system', content: NEURODESIGN_FILL_FROM_BRIEF_SYSTEM_PROMPT },
+            {
+              role: 'user',
+              content: `Preencha os campos do Neuro Designer com base no seguinte brief. Distribua tudo pelos campos do JSON; em "additional_prompt" só notas técnicas curtas ou omita. O contexto do fluxo (cliente/campanha) é enviado separadamente na geração — não o coloque em additional_prompt.\n\n--- BRIEF ---\n${trimmed}`,
+            },
           ],
           llm_integration_id: connId,
           is_user_connection: true,
@@ -476,6 +478,8 @@ Responda somente com o JSON.`;
           if (typeof value.blur_enabled === 'boolean') next.blur_enabled = value.blur_enabled;
           if (typeof value.lateral_gradient_enabled === 'boolean') next.lateral_gradient_enabled = value.lateral_gradient_enabled;
           sanitized[key] = next;
+        } else if (key === 'additional_prompt' && (typeof value === 'string' || typeof value === 'number')) {
+          sanitized[key] = clipAdditionalPromptFromFill(value);
         } else if (key === 'text_enabled' || key === 'text_gradient' || key === 'floating_elements_enabled' || key === 'use_reference_image_text' || key === 'subject_enabled') {
           sanitized[key] = Boolean(value);
         } else if (typeof value === 'string' || typeof value === 'number') {
@@ -483,23 +487,20 @@ Responda somente com o JSON.`;
         }
       }
       setCurrentConfig((prev) => {
-        const base = prev || {};
+        const base = mergeNeuroDesignDefaults(prev);
         const merged = { ...base };
         for (const key of Object.keys(sanitized)) {
+          if (key === 'additional_prompt') continue;
           if (key === 'visual_attributes') merged.visual_attributes = { ...(base.visual_attributes || {}), ...sanitized.visual_attributes };
           else merged[key] = sanitized[key];
         }
-        const briefOriginal = trimmed.trim();
-        const llmExtra = sanitized.additional_prompt != null ? String(sanitized.additional_prompt).trim() : '';
-        const combinedAp = [
-          'BRIEF ORIGINAL (texto integral de Preencher com IA):',
-          briefOriginal,
-          llmExtra ? `--- NOTAS TÉCNICAS EXTRAÍDAS ---\n${llmExtra}` : '',
-        ].filter(Boolean).join('\n\n');
-        merged.additional_prompt = combinedAp.slice(0, 80000);
+        merged.additional_prompt = clipAdditionalPromptFromFill(sanitized.additional_prompt);
         return merged;
       });
-      toast({ title: 'Campos preenchidos com sucesso!' });
+      toast({
+        title: 'Campos preenchidos',
+        description: 'Os dados foram distribuídos pelos campos. O prompt adicional contém só notas técnicas opcionais.',
+      });
     } catch (e) {
       toast({ title: 'Erro ao preencher campos', description: e?.message || 'Não foi possível extrair os campos.', variant: 'destructive' });
     } finally {
@@ -524,46 +525,69 @@ Responda somente com o JSON.`;
         });
       }
     }
-    if (embedded) onCollapse?.();
+    if (isFlowConfigOnly) onCollapse?.();
     else onOpenChange(false);
-  }, [selectedImage, onResult, onOpenChange, embedded, onCollapse]);
+  }, [selectedImage, onResult, onOpenChange, isFlowConfigOnly, onCollapse]);
 
-  const innerContent = (
+  const headerTitle = isFlowConfigOnly ? 'Configurar geração' : 'Gerador de Imagem – NeuroDesign';
+
+  const flowContextBlock =
+    flowContextText &&
+    (isFlowConfigOnly ? (
+      <div className="shrink-0 px-4 py-3 border-b border-border bg-muted/30">
+        <Label className="text-xs text-muted-foreground">Contexto do fluxo (usado no prompt)</Label>
+        <Textarea
+          readOnly
+          value={flowContextText}
+          className="mt-1 min-h-[72px] text-xs resize-none bg-muted border-border"
+        />
+        <p className="text-xs text-muted-foreground mt-1">Conecte Cliente, Contexto ou Campanha para enriquecer o prompt.</p>
+      </div>
+    ) : (
+      <div className="shrink-0 p-3 border-b border-border bg-muted/30">
+        <Label className="text-xs text-muted-foreground">Contexto do fluxo (usado no prompt)</Label>
+        <Textarea
+          readOnly
+          value={flowContextText}
+          className="mt-1 min-h-[80px] text-xs resize-none bg-muted border-border"
+        />
+        <p className="text-xs text-muted-foreground mt-1">Conecte Cliente, Contexto ou Campanha para enriquecer o prompt.</p>
+      </div>
+    ));
+
+  const builderPanelEl = (
+    <BuilderPanel
+      project={project}
+      config={currentConfig}
+      setConfig={setCurrentConfig}
+      imageConnections={imageConnections}
+      onGenerate={handleGenerate}
+      isGenerating={isGenerating}
+      onFillFromPrompt={handleFillFromPrompt}
+      hasLlmConnection={llmConnections.length > 0}
+      isFillingFromPrompt={isFillingFromPrompt}
+      selectedLlmId={selectedLlmId}
+      llmConnections={llmConnections}
+      onSelectLlmId={setSelectedLlmId}
+      embeddedSaveMode={isFlowConfigOnly}
+      onSaveAndBack={isFlowConfigOnly ? (cfg) => onEmbeddedSave?.(cfg) : undefined}
+    />
+  );
+
+  const innerContentDialog = (
     <>
       <div className="flex items-center justify-between shrink-0 px-4 py-3 border-b border-border bg-card">
-        <h2 className="text-lg font-semibold">Gerador de Imagem – NeuroDesign</h2>
-        <Button variant="ghost" size="icon" onClick={handleClose} aria-label={embedded ? 'Recolher' : 'Fechar'}>
+        <h2 className="text-lg font-semibold">{headerTitle}</h2>
+        <Button variant="ghost" size="icon" onClick={handleClose} aria-label="Fechar">
           <X className="h-5 w-5" />
         </Button>
       </div>
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[420px_1fr] min-h-0 overflow-hidden">
-        <div className="flex flex-col min-h-0 overflow-hidden border-r border-border">
-          {flowContextText && (
-            <div className="shrink-0 p-3 border-b border-border bg-muted/30">
-              <Label className="text-xs text-muted-foreground">Contexto do fluxo (usado no prompt)</Label>
-              <Textarea
-                readOnly
-                value={flowContextText}
-                className="mt-1 min-h-[80px] text-xs resize-none bg-muted border-border"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Conecte Cliente, Contexto ou Campanha para enriquecer o prompt.</p>
-            </div>
-          )}
-          <div className="flex-1 overflow-y-auto min-h-0">
-            <BuilderPanel
-              project={project}
-              config={currentConfig}
-              setConfig={setCurrentConfig}
-              imageConnections={imageConnections}
-              onGenerate={handleGenerate}
-              isGenerating={isGenerating}
-              onFillFromPrompt={handleFillFromPrompt}
-              hasLlmConnection={llmConnections.length > 0}
-              isFillingFromPrompt={isFillingFromPrompt}
-            />
-          </div>
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[420px_1fr] min-h-0 overflow-hidden nodrag nowheel nopan">
+        <div className="flex flex-col min-h-0 overflow-hidden border-r border-border nodrag nowheel nopan">
+          {flowContextBlock}
+          <div className="flex-1 overflow-y-auto min-h-0 nodrag nowheel">{builderPanelEl}</div>
         </div>
-        <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden nodrag nowheel nopan">
           <PreviewPanel
             project={project}
             user={user}
@@ -581,15 +605,27 @@ Responda somente com o JSON.`;
     </>
   );
 
-  if (embedded) {
-    return (
-      <div className="flex flex-col w-full overflow-hidden" style={{ height: '100%', minHeight: 0 }}>
-        <div
-          className="overflow-y-auto overflow-x-hidden flex-1"
-          style={{ minHeight: 0 }}
-        >
-          {innerContent}
+  const innerContentEmbedded = (
+    <>
+      <div className="flex items-center justify-between shrink-0 px-4 py-3 border-b border-border bg-card">
+        <h2 className="text-lg font-semibold">{headerTitle}</h2>
+        <Button variant="ghost" size="icon" onClick={handleClose} aria-label="Fechar sem guardar">
+          <X className="h-5 w-5" />
+        </Button>
+      </div>
+      <div className="flex flex-col flex-1 min-h-0 overflow-hidden nodrag nowheel nopan">
+        {flowContextBlock}
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden nodrag nowheel px-3 pb-4">
+          <div className="max-w-3xl mx-auto w-full">{builderPanelEl}</div>
         </div>
+      </div>
+    </>
+  );
+
+  if (isFlowConfigOnly) {
+    return (
+      <div className="flex flex-col w-full h-full overflow-hidden nodrag nowheel nopan" style={{ minHeight: 0 }}>
+        {innerContentEmbedded}
       </div>
     );
   }
@@ -603,7 +639,7 @@ Responda somente com o JSON.`;
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={() => handleClose()}
       >
-        {innerContent}
+        {innerContentDialog}
       </DialogContent>
     </Dialog>
   );

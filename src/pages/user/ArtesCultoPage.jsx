@@ -272,6 +272,7 @@ const ArtesCultoPage = () => {
         if (payload.selectionText) body.selectionText = payload.selectionText;
         if (payload.selectionFont) body.selectionFont = payload.selectionFont;
         if (payload.selectionFontStyle) body.selectionFontStyle = payload.selectionFontStyle;
+        if (payload.improveQuality) body.improveQuality = true;
       }
       const refineConn = imageConnections.find((c) => c.id === currentConfig?.user_ai_connection_id);
       const isGoogleRefine = refineConn?.provider?.toLowerCase() === 'google';
@@ -338,7 +339,18 @@ const ArtesCultoPage = () => {
     }
   };
 
-  const sidebarProps = { view, setView, projects, selectedProject, onSelectProject: setSelectedProject, onCreateProject: handleCreateProject, title: 'Artes de Culto', subtitle: 'Artes para igrejas' };
+  const sidebarProps = {
+    view,
+    setView,
+    projects,
+    selectedProject,
+    onSelectProject: setSelectedProject,
+    onCreateProject: handleCreateProject,
+    title: 'Artes de Culto',
+    subtitle: 'Artes para igrejas',
+    showBrandHeader: true,
+    showExpertsTab: false,
+  };
 
   return (
     <>

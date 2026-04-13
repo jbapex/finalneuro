@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { openRouterImageChatModalities } from "../_shared/openRouterImageModalities.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -211,7 +212,7 @@ async function generateWithOpenRouter(
   const body: Record<string, unknown> = {
     model,
     messages: [{ role: "user", content }],
-    modalities: ["image", "text"],
+    modalities: openRouterImageChatModalities(model),
     stream: false,
     image_config: { aspect_ratio: getAspectRatio(dimensions) },
   };

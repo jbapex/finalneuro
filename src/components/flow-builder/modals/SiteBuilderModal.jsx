@@ -33,6 +33,8 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
   const [flowContext, setFlowContext] = useState(null);
   const [activeView, setActiveView] = useState('modules'); // For mobile
   const [isBuilding, setIsBuilding] = useState(false);
+  const [projectBrief, setProjectBrief] = useState(null);
+  const [clients, setClients] = useState([]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -99,7 +101,7 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('site_projects')
-      .select('id, name, page_structure, chat_history, user_id')
+      .select('id, name, page_structure, chat_history, user_id, project_brief')
       .eq('id', projectId)
       .eq('user_id', user.id)
       .single();
@@ -113,6 +115,7 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
       onClose();
     } else {
       setProject(data);
+      setProjectBrief(data.project_brief ?? null);
       const structure = data.page_structure || [];
       setPageStructure(structure);
       if (structure.length > 0 && !activeModule) {
@@ -132,6 +135,41 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
   useEffect(() => {
     selectedElementRef.current = selectedElement;
   }, [selectedElement]);
+
+  const saveProjectBrief = useCallback(
+    async (brief) => {
+      if (!projectId || !user) return;
+      const { error } = await supabase
+        .from('site_projects')
+        .update({
+          project_brief: brief && Object.keys(brief).length ? brief : null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', projectId)
+        .eq('user_id', user.id);
+      if (error) {
+        toast({ title: 'Erro ao salvar brief', description: error.message, variant: 'destructive' });
+      } else {
+        setProjectBrief(brief && Object.keys(brief).length ? brief : null);
+        toast({ title: 'Brief salvo!' });
+      }
+    },
+    [projectId, user, toast]
+  );
+
+  const fetchClients = useCallback(async () => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('clients')
+      .select('id, name, niche, target_audience, style_in_3_words, about, product_to_promote')
+      .eq('user_id', user.id)
+      .order('name');
+    if (!error && data) setClients(data);
+  }, [user]);
+
+  useEffect(() => {
+    if (isOpen && user) fetchClients();
+  }, [isOpen, user, fetchClients]);
 
   const updateProjectInDb = useCallback(async (updates) => {
     const { error } = await supabase
@@ -259,6 +297,9 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
             setPageStructure={setPageStructure}
             setIsBuilding={setIsBuilding}
             flowContext={flowContext}
+            projectBrief={projectBrief}
+            onSaveBrief={saveProjectBrief}
+            clients={clients}
           />
         </ResizablePanel>
         <ResizableHandle withHandle />
@@ -295,7 +336,15 @@ const SiteBuilderModal = ({ isOpen, onClose, projectId, flowId, nodeId }) => {
             </DndContext>
           </div>
           <div className={activeView === 'chat' ? 'h-full' : 'hidden'}>
-            <ChatPanel pageStructure={pageStructure} setPageStructure={setPageStructure} setIsBuilding={setIsBuilding} flowContext={flowContext} />
+            <ChatPanel
+              pageStructure={pageStructure}
+              setPageStructure={setPageStructure}
+              setIsBuilding={setIsBuilding}
+              flowContext={flowContext}
+              projectBrief={projectBrief}
+              onSaveBrief={saveProjectBrief}
+              clients={clients}
+            />
           </div>
           <div className={activeView === 'preview' ? 'h-full' : 'hidden'}>
             <PreviewPanel pageStructure={pageStructure} setPageStructure={setPageStructure} selectedElement={selectedElement} setSelectedElement={setSelectedElement} onOpenImageBank={() => setIsImageBankOpen(true)} isBuilding={isBuilding} />

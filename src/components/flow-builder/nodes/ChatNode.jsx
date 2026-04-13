@@ -13,6 +13,7 @@ import React, { useState, useEffect, useRef } from 'react';
     import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
     import { useAuth } from '@/contexts/SupabaseAuthContext';
     import { getFriendlyErrorMessage } from '@/lib/utils';
+    import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
     /** Inclui conexão se não houver capabilities ou se texto não estiver explicitamente desativado. */
     const isTextConnection = (conn) =>
@@ -80,7 +81,7 @@ import React, { useState, useEffect, useRef } from 'react';
     };
 
 
-    const ChatNode = ({ id, data, isConnectable }) => {
+    const ChatNode = ({ id, data, isConnectable, selected }) => {
       const { onUpdateNodeData, inputData, onRefreshData } = data;
       const { user, profile } = useAuth();
       const [messages, setMessages] = useState(data.messages || []);
@@ -396,9 +397,10 @@ import React, { useState, useEffect, useRef } from 'react';
             className="w-3 h-3 !bg-primary"
           />
           <div className="p-3 sm:p-4 bg-card-header rounded-t-lg border-b flex-shrink-0 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-                <Bot className="h-6 w-6 text-primary shrink-0" />
-                <div className="font-bold text-base sm:text-lg truncate">{data.label}</div>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+                <Bot className="h-6 w-6 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1 truncate font-bold text-base sm:text-lg">{data.label}</div>
+                <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
             </div>
             <div className="flex flex-col gap-1 w-full sm:w-[min(100%,320px)] sm:shrink-0">
               <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide">

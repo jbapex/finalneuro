@@ -8,8 +8,9 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useNeuroDesignProject } from '@/hooks/useNeuroDesignProject';
 import { useToast } from '@/components/ui/use-toast';
 import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
-const ImageLogoNode = memo(({ data, id }) => {
+const ImageLogoNode = memo(({ data, id, selected }) => {
   const { onUpdateNodeData } = data;
   const logoUrl = data.logo_url ?? '';
   const [uploading, setUploading] = useState(false);
@@ -58,9 +59,12 @@ const ImageLogoNode = memo(({ data, id }) => {
 
   return (
     <Card className="w-64 border-2 border-sky-500/50 shadow-lg">
-      <CardHeader className="flex-row items-center space-x-2 p-3 bg-sky-500/10">
-        <ImageIcon className="w-5 h-5 text-sky-500" />
-        <CardTitle className="text-base">Imagem para logo</CardTitle>
+      <CardHeader className="flex flex-row items-center gap-2 p-3 bg-sky-500/10 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ImageIcon className="w-5 h-5 shrink-0 text-sky-500" />
+          <CardTitle className="text-base truncate">Imagem para logo</CardTitle>
+        </div>
+        <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
       </CardHeader>
       <CardContent className="p-3 space-y-2">
         <input

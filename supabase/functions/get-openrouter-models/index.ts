@@ -11,7 +11,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
+/** Inclui embeddings, imagem, etc.; sem o parâmetro a API omite dezenas de modelos. */
+const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models?output_modalities=all";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -61,16 +62,29 @@ serve(async (req) => {
           : [];
 
     const models = rawList.map((m: Record<string, unknown>) => {
-      const outputModalities = (m?.architecture as Record<string, unknown>)?.output_modalities as string[] | undefined;
+      const arch = m?.architecture as Record<string, unknown> | undefined;
+      const outputModalities = arch?.output_modalities as string[] | undefined;
       const topLevelModalities = m?.output_modalities as string[] | undefined;
-      const modalities = outputModalities ?? topLevelModalities ?? [];
+      const modalities = Array.isArray(outputModalities)
+        ? outputModalities
+        : Array.isArray(topLevelModalities)
+          ? topLevelModalities
+          : [];
+      const architecture =
+        arch && typeof arch === "object"
+          ? {
+            modality: arch.modality,
+            input_modalities: arch.input_modalities,
+            output_modalities: Array.isArray(arch.output_modalities) ? arch.output_modalities : modalities,
+          }
+          : { output_modalities: modalities };
+
       return {
-        ...m,
-        id: m?.id ?? m?.name ?? "",
-        name: m?.name ?? m?.id ?? "",
-        architecture: (m?.architecture && typeof m.architecture === "object") ? m.architecture : { output_modalities: modalities },
+        id: String(m?.id ?? m?.name ?? ""),
+        name: String(m?.name ?? m?.id ?? ""),
+        architecture,
       };
-    });
+    }).filter((m) => m.id.length > 0);
 
     return new Response(JSON.stringify({ models }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

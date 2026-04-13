@@ -10,8 +10,9 @@ import { BookOpen, PlusCircle, Loader2 } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
-const KnowledgeNode = memo(({ data, id }) => {
+const KnowledgeNode = memo(({ data, id, selected }) => {
   const { onUpdateNodeData, knowledgeSources, selectedSourceId } = data;
   const { toast } = useToast();
   const { user } = useAuth();
@@ -74,9 +75,12 @@ const KnowledgeNode = memo(({ data, id }) => {
     <>
       <Card className="w-64 border-2 border-yellow-500/50 shadow-lg">
         <Handle type="target" position={Position.Left} className="!bg-yellow-500" />
-        <CardHeader className="flex-row items-center space-x-2 p-3 bg-yellow-500/10">
-          <BookOpen className="w-5 h-5 text-yellow-500" />
-          <CardTitle className="text-base">Fonte de Conhecimento</CardTitle>
+        <CardHeader className="flex flex-row items-center gap-2 p-3 bg-yellow-500/10 min-w-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <BookOpen className="w-5 h-5 shrink-0 text-yellow-500" />
+            <CardTitle className="text-base truncate">Fonte de Conhecimento</CardTitle>
+          </div>
+          <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
         </CardHeader>
         <CardContent className="p-3 space-y-2">
           <Select onValueChange={handleSourceChange} value={selectedSourceId}>

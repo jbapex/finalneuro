@@ -7,7 +7,7 @@ const BUCKET = 'system_branding';
 async function fetchFromTable() {
   const { data, error } = await supabase
     .from('system_branding')
-    .select('id, light_logo_url, dark_logo_url, icon_logo_url, icon_light_logo_url, icon_dark_logo_url')
+    .select('id, light_logo_url, dark_logo_url, icon_logo_url, icon_light_logo_url, icon_dark_logo_url, meta_pixel_id')
     .eq('id', BRANDING_ID)
     .maybeSingle();
 
@@ -16,7 +16,15 @@ async function fetchFromTable() {
       // eslint-disable-next-line no-console
       console.warn('[systemBranding] erro ao buscar system_branding:', error);
     }
-    return { lightLogoUrl: null, darkLogoUrl: null, iconLogoUrl: null, iconLightLogoUrl: null, iconDarkLogoUrl: null, error };
+    return {
+      lightLogoUrl: null,
+      darkLogoUrl: null,
+      iconLogoUrl: null,
+      iconLightLogoUrl: null,
+      iconDarkLogoUrl: null,
+      metaPixelId: null,
+      error,
+    };
   }
 
   return {
@@ -25,6 +33,7 @@ async function fetchFromTable() {
     iconLogoUrl: data?.icon_logo_url ?? null,
     iconLightLogoUrl: data?.icon_light_logo_url ?? null,
     iconDarkLogoUrl: data?.icon_dark_logo_url ?? null,
+    metaPixelId: data?.meta_pixel_id != null ? String(data.meta_pixel_id).trim() || null : null,
     error: null,
   };
 }
@@ -36,7 +45,7 @@ async function fetchFromStorageFallback() {
       // eslint-disable-next-line no-console
       console.warn('[systemBranding] erro ao listar bucket system_branding:', error);
     }
-    return { lightLogoUrl: null, darkLogoUrl: null, iconLogoUrl: null };
+    return { lightLogoUrl: null, darkLogoUrl: null, iconLogoUrl: null, metaPixelId: null };
   }
 
   let lightLogoUrl = null;
@@ -59,7 +68,7 @@ async function fetchFromStorageFallback() {
     }
   }
 
-  return { lightLogoUrl, darkLogoUrl, iconLogoUrl };
+  return { lightLogoUrl, darkLogoUrl, iconLogoUrl, metaPixelId: null };
 }
 
 export async function fetchSystemBranding() {
@@ -79,6 +88,7 @@ export async function fetchSystemBranding() {
     iconLogoUrl: storageResult.iconLogoUrl,
     iconLightLogoUrl: tableResult.iconLightLogoUrl, // fallback não suporta ainda
     iconDarkLogoUrl: tableResult.iconDarkLogoUrl, // fallback não suporta ainda
+    metaPixelId: tableResult.metaPixelId,
     error: tableResult.error,
   };
 }

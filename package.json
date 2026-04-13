@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite --host :: --port 3000",
     "build": "vite build",
-    "preview": "vite preview --host :: --port 3000"
+    "preview": "vite preview --host :: --port 3000",
+    "neuro-motion:worker": "node scripts/neuro-motion-worker.mjs",
+    "neuro-motion:worker:loop": "NEURO_MOTION_WORKER_LOOP=1 node scripts/neuro-motion-worker.mjs",
+    "neuro-motion:studio": "remotion studio src/remotion/entry.jsx --port=3333",
+    "neuro-motion:studio:vps": "remotion studio src/remotion/entry.jsx --port=3333 --ipv4"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.1.0",
@@ -35,6 +39,8 @@
     "@radix-ui/react-tooltip": "^1.1.2",
     "@react-pdf/renderer": "^3.4.4",
     "@reactflow/node-resizer": "^2.1.0",
+    "@remotion/google-fonts": "^4.0.443",
+    "@remotion/player": "^4.0.443",
     "@supabase/supabase-js": "2.30.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
@@ -58,6 +64,7 @@
     "react-resizable-panels": "^2.0.19",
     "react-router-dom": "^6.16.0",
     "reactflow": "^11.11.3",
+    "remotion": "^4.0.443",
     "sonner": "^1.4.41",
     "tailwind-merge": "^1.1.4",
     "tailwindcss-animate": "^1.0.7",
@@ -72,6 +79,9 @@
     "@babel/parser": "^7.27.0",
     "@babel/traverse": "^7.27.0",
     "@babel/types": "^7.27.0",
+    "@remotion/bundler": "^4.0.443",
+    "@remotion/cli": "^4.0.443",
+    "@remotion/renderer": "^4.0.443",
     "@tailwindcss/typography": "^0.5.13",
     "@types/node": "^20.8.3",
     "@types/react": "^18.2.15",

@@ -5,20 +5,32 @@ const BUCKET = 'neurodesign';
 const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
 
+const REFINE_UPLOAD_TYPES = new Set([
+  'refine_ref',
+  'refine_replacement',
+  'refine_crop',
+  'refine_add',
+  'refine_source',
+]);
+
+function stripImageBaseName(name) {
+  const n = String(name || 'image').replace(/\.[^/.]+$/, '');
+  return n || 'image';
+}
+
 /**
- * Comprime a imagem no lado do cliente antes do upload.
- * Reduz a resolução máxima para 1024x1024 e a qualidade para 80%.
+ * Comprime antes do upload. Refinos: até 4096px; tenta PNG (sem artefatos JPEG) até 8MB, senão JPEG 98%.
  */
-async function compressImage(file) {
-  return new Promise((resolve, reject) => {
+async function compressImage(file, { highFidelity = false } = {}) {
+  return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(url);
       const canvas = document.createElement('canvas');
       let { width, height } = img;
-      
-      const maxDim = 1024;
+
+      const maxDim = highFidelity ? 4096 : 1024;
       if (width > maxDim || height > maxDim) {
         if (width > height) {
           height = Math.round((height * maxDim) / width);
@@ -28,29 +40,50 @@ async function compressImage(file) {
           height = maxDim;
         }
       }
-      
+
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, 0, 0, width, height);
-      
-      canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            const compressedFile = new File([blob], file.name, {
-              type: 'image/jpeg',
-              lastModified: Date.now(),
-            });
-            resolve(compressedFile);
+
+      const base = stripImageBaseName(file.name);
+      const maxPngBytes = 8 * 1024 * 1024;
+
+      const asJpeg = (quality) => {
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(
+                new File([blob], `${base}.jpg`, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now(),
+                })
+              );
+            } else resolve(file);
+          },
+          'image/jpeg',
+          quality
+        );
+      };
+
+      if (highFidelity) {
+        canvas.toBlob((blob) => {
+          if (blob && blob.size <= maxPngBytes) {
+            resolve(
+              new File([blob], `${base}.png`, {
+                type: 'image/png',
+                lastModified: Date.now(),
+              })
+            );
           } else {
-            resolve(file); // Fallback to original
+            asJpeg(0.98);
           }
-        },
-        'image/jpeg',
-        0.8
-      );
+        }, 'image/png');
+      } else {
+        asJpeg(0.8);
+      }
     };
-    img.onerror = () => resolve(file); // Fallback to original on error
+    img.onerror = () => resolve(file);
     img.src = url;
   });
 }
@@ -71,10 +104,11 @@ export async function uploadNeuroDesignFile(userId, projectId, type, file) {
     throw new Error('Arquivo muito grande. Máximo 10MB.');
   }
   
-  // Comprimir a imagem antes de subir para evitar estourar a memória da Edge Function
-  const fileToUpload = file.type.startsWith('image/') && file.type !== 'image/gif' 
-    ? await compressImage(file) 
-    : file;
+  const highFidelity = REFINE_UPLOAD_TYPES.has(type);
+  const fileToUpload =
+    file.type.startsWith('image/') && file.type !== 'image/gif'
+      ? await compressImage(file, { highFidelity })
+      : file;
     
   const ext = (fileToUpload.name.split('.').pop() || 'png').toLowerCase();
   const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];

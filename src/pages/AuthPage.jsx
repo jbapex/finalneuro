@@ -11,6 +11,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useSystemLogo } from '@/lib/systemBranding';
 import { useLandingAssets } from '@/lib/landingAssets';
+import { useLandingPageCopy } from '@/lib/landingPageCopy';
 import { useTheme } from '@/contexts/ThemeContext';
 
 const AuthPage = () => {
@@ -26,6 +27,7 @@ const AuthPage = () => {
   const { toast } = useToast();
   const { lightLogoUrl, darkLogoUrl } = useSystemLogo();
   const { assets: landingAssets } = useLandingAssets();
+  const lc = useLandingPageCopy();
   const { theme } = useTheme();
 
   useEffect(() => {
@@ -214,16 +216,19 @@ const AuthPage = () => {
           >
             <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
             <span className="text-xs font-medium text-white/80 uppercase tracking-wider">
-              O fim das assinaturas de IA limitadas
+              {lc.hero_badge}
             </span>
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }} className="space-y-6">
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.1]">
-              Sua própria plataforma de IA para <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">Marketing e Design.</span>
+              {lc.hero_title_before}
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-purple-400">
+                {lc.hero_title_highlight}
+              </span>
             </h1>
             <p className="text-base md:text-lg text-white/70 max-w-2xl leading-relaxed">
-              Pare de pagar por créditos em ferramentas gringas. Tenha seu próprio sistema para gerar artes, copys e gerenciar campanhas com inteligência artificial ilimitada. Perfeito para agências, igrejas e experts escalarem suas operações.
+              {lc.hero_subtitle}
             </p>
           </motion.div>
 
@@ -231,22 +236,22 @@ const AuthPage = () => {
             <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 flex-1 min-w-[160px] backdrop-blur-sm">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">🎨</div>
               <div>
-                <p className="text-sm font-bold text-white">Artes Ilimitadas</p>
-                <p className="text-[10px] text-white/50">Sem custo por imagem</p>
+                <p className="text-sm font-bold text-white">{lc.hero_pill_1_title}</p>
+                <p className="text-[10px] text-white/50">{lc.hero_pill_1_sub}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 flex-1 min-w-[160px] backdrop-blur-sm">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">🤖</div>
               <div>
-                <p className="text-sm font-bold text-white">Agentes Especialistas</p>
-                <p className="text-[10px] text-white/50">Copy, tráfego e estratégia</p>
+                <p className="text-sm font-bold text-white">{lc.hero_pill_2_title}</p>
+                <p className="text-[10px] text-white/50">{lc.hero_pill_2_sub}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 flex-1 min-w-[160px] backdrop-blur-sm">
               <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary">⚙️</div>
               <div>
-                <p className="text-sm font-bold text-white">Controle Total</p>
-                <p className="text-[10px] text-white/50">Sua marca, suas regras</p>
+                <p className="text-sm font-bold text-white">{lc.hero_pill_3_title}</p>
+                <p className="text-[10px] text-white/50">{lc.hero_pill_3_sub}</p>
               </div>
             </div>
           </motion.div>
@@ -282,9 +287,7 @@ const AuthPage = () => {
                 })()}
               </div>
               <CardDescription className="text-xs sm:text-sm text-muted-foreground mt-1">
-                {isForgotPassword
-                  ? 'Informe o e-mail cadastrado para receber o link de redefinição de senha.'
-                  : 'Entre na central que une NeuroDesigner, chats de IA e performance para operar marketing, cultos e projetos em um só lugar.'}
+                {isForgotPassword ? lc.card_desc_forgot : lc.card_desc_login}
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-4 pb-6" data-auth-form>
@@ -450,26 +453,25 @@ const AuthPage = () => {
         <section className="grid gap-12 lg:grid-cols-[1.2fr_1fr] items-center">
           <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="space-y-6">
             <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-white leading-tight">
-              Sua fábrica de artes e campanhas com IA, <br className="hidden md:block"/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-400">do jeito que o cliente vê.</span>
+              {lc.neo_title_1}
+              <br className="hidden md:block" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-blue-400">
+                {lc.neo_title_2}
+              </span>
             </h2>
-            <p className="text-base md:text-lg text-white/70 leading-relaxed">
-              Crie artes para cultos, campanhas, lançamentos e redes sociais com poucos cliques.
-              O NeuroDesigner foi pensado para quem precisa produzir muito, com padrão profissional,
-              sem depender de templates genéricos.
-            </p>
+            <p className="text-base md:text-lg text-white/70 leading-relaxed">{lc.neo_paragraph}</p>
             <ul className="text-base text-white/80 space-y-4 pt-4">
               <li className="flex items-start gap-3">
                 <div className="mt-1 bg-primary/20 p-1 rounded-full"><div className="w-2 h-2 bg-primary rounded-full"/></div>
-                <span>Fluxos prontos para Artes Culto, anúncios, criativos e posts.</span>
+                <span>{lc.neo_li_1}</span>
               </li>
               <li className="flex items-start gap-3">
                 <div className="mt-1 bg-primary/20 p-1 rounded-full"><div className="w-2 h-2 bg-primary rounded-full"/></div>
-                <span>IA ajustada para linguagem de igrejas, infoprodutos e negócios locais.</span>
+                <span>{lc.neo_li_2}</span>
               </li>
               <li className="flex items-start gap-3">
                 <div className="mt-1 bg-primary/20 p-1 rounded-full"><div className="w-2 h-2 bg-primary rounded-full"/></div>
-                <span>Controle total dos prompts, referências e logos do seu sistema.</span>
+                <span>{lc.neo_li_3}</span>
               </li>
             </ul>
           </motion.div>
@@ -479,7 +481,7 @@ const AuthPage = () => {
             <div className="relative rounded-3xl border border-white/10 bg-[#0a0a1a] p-2 shadow-2xl overflow-hidden aspect-[4/3] flex flex-col">
               <div className="flex items-center gap-2 px-4 py-3 border-b border-white/5">
                 <div className="flex gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500/50"/><div className="w-3 h-3 rounded-full bg-yellow-500/50"/><div className="w-3 h-3 rounded-full bg-green-500/50"/></div>
-                <div className="mx-auto text-xs text-white/30 font-medium tracking-wider">NEURODESIGNER</div>
+                <div className="mx-auto text-xs text-white/30 font-medium tracking-wider">{lc.neo_mock_label}</div>
               </div>
               <div className="flex-1 bg-gradient-to-br from-primary/10 via-transparent to-transparent flex items-center justify-center text-center relative overflow-hidden">
                  {landingAssets.hero_print ? (
@@ -487,9 +489,7 @@ const AuthPage = () => {
                  ) : (
                    <div className="space-y-3 max-w-sm p-8">
                       <Brain className="w-12 h-12 text-primary/50 mx-auto" />
-                      <p className="text-sm text-white/60">
-                        Espaço reservado para print real do NeuroDesigner (fluxo de criação ou painel).
-                      </p>
+                      <p className="text-sm text-white/60">{lc.neo_placeholder}</p>
                    </div>
                  )}
               </div>
@@ -500,10 +500,8 @@ const AuthPage = () => {
         {/* Funcionalidades Detalhadas */}
         <section className="space-y-16 py-12">
           <div className="text-center space-y-4 max-w-3xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-white">
-              Tudo que você precisa em uma única plataforma
-            </h2>
-            <p className="text-white/60 text-lg">Substitua dezenas de ferramentas avulsas e centralize sua operação.</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-white">{lc.feat_intro_title}</h2>
+            <p className="text-white/60 text-lg">{lc.feat_intro_subtitle}</p>
           </div>
           
           <div className="grid gap-8 lg:grid-cols-2">
@@ -520,27 +518,29 @@ const AuthPage = () => {
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a]/50 to-transparent" />
                 <div className="relative z-10 space-y-2">
-                  <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center text-2xl mb-4">🎨</div>
-                  <h3 className="text-2xl font-bold text-white">NeuroDesigner</h3>
-                  <p className="text-white/70">Gere artes impressionantes para cultos, anúncios e redes sociais em segundos. Sem depender de designers ou templates engessados.</p>
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-2xl backdrop-blur">
+                    {lc.f1_emoji}
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">{lc.f1_title}</h3>
+                  <p className="text-white/70">{lc.f1_desc}</p>
                 </div>
               </div>
-              <div className="p-6 grid grid-cols-2 gap-4 bg-white/[0.02] relative z-20">
+              <div className="relative z-20 grid grid-cols-2 gap-4 bg-white/[0.02] p-6">
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Artes Culto</p>
-                  <p className="text-white/50 text-xs">Fluxos otimizados para igrejas</p>
+                  <p className="text-sm font-medium text-white">{lc.f1_b1_t}</p>
+                  <p className="text-xs text-white/50">{lc.f1_b1_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Criativos Ads</p>
-                  <p className="text-white/50 text-xs">Foco em alta conversão</p>
+                  <p className="text-sm font-medium text-white">{lc.f1_b2_t}</p>
+                  <p className="text-xs text-white/50">{lc.f1_b2_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Sem Limites</p>
-                  <p className="text-white/50 text-xs">Gere quantas precisar</p>
+                  <p className="text-sm font-medium text-white">{lc.f1_b3_t}</p>
+                  <p className="text-xs text-white/50">{lc.f1_b3_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Sua Identidade</p>
-                  <p className="text-white/50 text-xs">Controle de logos e cores</p>
+                  <p className="text-sm font-medium text-white">{lc.f1_b4_t}</p>
+                  <p className="text-xs text-white/50">{lc.f1_b4_s}</p>
                 </div>
               </div>
             </motion.div>
@@ -558,27 +558,29 @@ const AuthPage = () => {
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a]/50 to-transparent" />
                 <div className="relative z-10 space-y-2">
-                  <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center text-2xl mb-4">🤖</div>
-                  <h3 className="text-2xl font-bold text-white">Agentes Especialistas</h3>
-                  <p className="text-white/70">Um time completo de IAs treinadas para copywriting, estratégia, tráfego e conteúdo, trabalhando para os seus projetos.</p>
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-2xl backdrop-blur">
+                    {lc.f2_emoji}
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">{lc.f2_title}</h3>
+                  <p className="text-white/70">{lc.f2_desc}</p>
                 </div>
               </div>
-              <div className="p-6 grid grid-cols-2 gap-4 bg-white/[0.02] relative z-20">
+              <div className="relative z-20 grid grid-cols-2 gap-4 bg-white/[0.02] p-6">
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Copywriters</p>
-                  <p className="text-white/50 text-xs">Textos que vendem</p>
+                  <p className="text-sm font-medium text-white">{lc.f2_b1_t}</p>
+                  <p className="text-xs text-white/50">{lc.f2_b1_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Estrategistas</p>
-                  <p className="text-white/50 text-xs">Planejamento de campanhas</p>
+                  <p className="text-sm font-medium text-white">{lc.f2_b2_t}</p>
+                  <p className="text-xs text-white/50">{lc.f2_b2_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Contexto Real</p>
-                  <p className="text-white/50 text-xs">IA lê os dados do cliente</p>
+                  <p className="text-sm font-medium text-white">{lc.f2_b3_t}</p>
+                  <p className="text-xs text-white/50">{lc.f2_b3_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Multi-Modelos</p>
-                  <p className="text-white/50 text-xs">GPT-4, Claude, Gemini</p>
+                  <p className="text-sm font-medium text-white">{lc.f2_b4_t}</p>
+                  <p className="text-xs text-white/50">{lc.f2_b4_s}</p>
                 </div>
               </div>
             </motion.div>
@@ -596,27 +598,29 @@ const AuthPage = () => {
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a]/50 to-transparent" />
                 <div className="relative z-10 space-y-2">
-                  <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center text-2xl mb-4">📊</div>
-                  <h3 className="text-2xl font-bold text-white">Performance e Tráfego</h3>
-                  <p className="text-white/70">Conecte suas contas de anúncios e veja os resultados em tempo real. A IA analisa as métricas e sugere otimizações.</p>
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-2xl backdrop-blur">
+                    {lc.f3_emoji}
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">{lc.f3_title}</h3>
+                  <p className="text-white/70">{lc.f3_desc}</p>
                 </div>
               </div>
-              <div className="p-6 grid grid-cols-2 gap-4 bg-white/[0.02] relative z-20">
+              <div className="relative z-20 grid grid-cols-2 gap-4 bg-white/[0.02] p-6">
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Meta Ads</p>
-                  <p className="text-white/50 text-xs">Integração direta</p>
+                  <p className="text-sm font-medium text-white">{lc.f3_b1_t}</p>
+                  <p className="text-xs text-white/50">{lc.f3_b1_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Dashboards</p>
-                  <p className="text-white/50 text-xs">Visão clara de ROI/ROAS</p>
+                  <p className="text-sm font-medium text-white">{lc.f3_b2_t}</p>
+                  <p className="text-xs text-white/50">{lc.f3_b2_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Análise IA</p>
-                  <p className="text-white/50 text-xs">Insights automáticos</p>
+                  <p className="text-sm font-medium text-white">{lc.f3_b3_t}</p>
+                  <p className="text-xs text-white/50">{lc.f3_b3_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Relatórios</p>
-                  <p className="text-white/50 text-xs">Prontos para o cliente</p>
+                  <p className="text-sm font-medium text-white">{lc.f3_b4_t}</p>
+                  <p className="text-xs text-white/50">{lc.f3_b4_s}</p>
                 </div>
               </div>
             </motion.div>
@@ -634,27 +638,29 @@ const AuthPage = () => {
                 <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
                 <div className="absolute inset-0 bg-gradient-to-t from-[#0a0a1a] via-[#0a0a1a]/50 to-transparent" />
                 <div className="relative z-10 space-y-2">
-                  <div className="w-12 h-12 rounded-xl bg-white/10 backdrop-blur flex items-center justify-center text-2xl mb-4">🏢</div>
-                  <h3 className="text-2xl font-bold text-white">Gestão de Clientes</h3>
-                  <p className="text-white/70">Organize todas as informações, campanhas, arquivos e calendário de publicações de cada cliente em um só lugar.</p>
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-2xl backdrop-blur">
+                    {lc.f4_emoji}
+                  </div>
+                  <h3 className="text-2xl font-bold text-white">{lc.f4_title}</h3>
+                  <p className="text-white/70">{lc.f4_desc}</p>
                 </div>
               </div>
-              <div className="p-6 grid grid-cols-2 gap-4 bg-white/[0.02] relative z-20">
+              <div className="relative z-20 grid grid-cols-2 gap-4 bg-white/[0.02] p-6">
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">CRM Integrado</p>
-                  <p className="text-white/50 text-xs">Dados centralizados</p>
+                  <p className="text-sm font-medium text-white">{lc.f4_b1_t}</p>
+                  <p className="text-xs text-white/50">{lc.f4_b1_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Calendário</p>
-                  <p className="text-white/50 text-xs">Planejamento visual</p>
+                  <p className="text-sm font-medium text-white">{lc.f4_b2_t}</p>
+                  <p className="text-xs text-white/50">{lc.f4_b2_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Projetos</p>
-                  <p className="text-white/50 text-xs">Kanban e tarefas</p>
+                  <p className="text-sm font-medium text-white">{lc.f4_b3_t}</p>
+                  <p className="text-xs text-white/50">{lc.f4_b3_s}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-white font-medium text-sm">Arquivos</p>
-                  <p className="text-white/50 text-xs">Media center organizado</p>
+                  <p className="text-sm font-medium text-white">{lc.f4_b4_t}</p>
+                  <p className="text-xs text-white/50">{lc.f4_b4_s}</p>
                 </div>
               </div>
             </motion.div>
@@ -665,10 +671,8 @@ const AuthPage = () => {
         <section className="space-y-12 py-12 relative">
           <div className="absolute inset-0 bg-primary/5 blur-3xl rounded-full -z-10" />
           <div className="text-center space-y-4 max-w-3xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-white">
-              Criado com NeuroDesigner
-            </h2>
-            <p className="text-white/60 text-lg">Resultados profissionais gerados por inteligência artificial em segundos.</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-white">{lc.gal_title}</h2>
+            <p className="text-white/60 text-lg">{lc.gal_subtitle}</p>
           </div>
           
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -695,7 +699,7 @@ const AuthPage = () => {
                     </div>
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
-                    <p className="text-white text-xs font-medium">Arte gerada por IA</p>
+                    <p className="text-white text-xs font-medium">{lc.gal_hover}</p>
                   </div>
                 </motion.div>
               );
@@ -707,16 +711,14 @@ const AuthPage = () => {
         <section className="space-y-12 relative">
           <div className="absolute inset-0 bg-primary/5 blur-3xl rounded-full -z-10" />
           <div className="text-center space-y-4 max-w-3xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold text-white">
-              Feito para quem vende criatividade e resultado.
-            </h2>
+            <h2 className="text-3xl md:text-4xl font-bold text-white">{lc.aud_title}</h2>
           </div>
           
           <div className="grid gap-6 md:grid-cols-3">
              {[
-              { title: 'Agências e Social Media', desc: 'Centralize clientes, campanhas e arte em um sistema que você pode apresentar como parte da sua própria plataforma.' },
-              { title: 'Igrejas e ministérios', desc: 'Planeje séries, cultos e eventos com artes, textos e descrições alinhadas à linguagem da igreja.' },
-              { title: 'Experts e infoprodutores', desc: 'Organize lançamentos, conteúdos perpétuos e presença digital com IA focada em conversão.' }
+              { title: lc.aud_1_t, desc: lc.aud_1_d },
+              { title: lc.aud_2_t, desc: lc.aud_2_d },
+              { title: lc.aud_3_t, desc: lc.aud_3_d },
             ].map((target, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: i * 0.1 }} 
                 className="rounded-3xl border border-white/5 bg-gradient-to-b from-white/[0.08] to-transparent p-8 flex flex-col gap-3"
@@ -735,21 +737,15 @@ const AuthPage = () => {
               className="rounded-3xl border border-emerald-500/30 bg-emerald-500/10 p-8 flex flex-col gap-4 relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/20 blur-2xl rounded-full" />
-              <h3 className="text-2xl font-bold text-white relative z-10">Sem cobrança por créditos</h3>
-              <p className="text-base text-white/80 leading-relaxed relative z-10">
-                Você controla a infraestrutura e o custo de IA. O sistema não limita quantas artes ou ideias
-                você pode gerar para os seus clientes. Liberdade total para escalar.
-              </p>
+              <h3 className="text-2xl font-bold text-white relative z-10">{lc.diff_1_t}</h3>
+              <p className="text-base text-white/80 leading-relaxed relative z-10">{lc.diff_1_p}</p>
             </motion.div>
             <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }} 
               className="rounded-3xl border border-primary/30 bg-primary/10 p-8 flex flex-col gap-4 relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-primary/20 blur-2xl rounded-full" />
-              <h3 className="text-2xl font-bold text-white relative z-10">Controle total do sistema</h3>
-              <p className="text-base text-white/80 leading-relaxed relative z-10">
-                Personalize logo, cores, textos, fluxos e integrações. O Neuro Ápice é pensado para ser a
-                base da sua própria solução, não só uma conta em mais um SaaS.
-              </p>
+              <h3 className="text-2xl font-bold text-white relative z-10">{lc.diff_2_t}</h3>
+              <p className="text-base text-white/80 leading-relaxed relative z-10">{lc.diff_2_p}</p>
             </motion.div>
           </div>
         </section>
@@ -760,13 +756,8 @@ const AuthPage = () => {
         >
           <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
           <div className="space-y-4 max-w-2xl relative z-10">
-            <h2 className="text-3xl md:text-5xl font-extrabold text-white tracking-tight">
-              Pronto para colocar o NeuroDesigner para trabalhar ao seu favor?
-            </h2>
-            <p className="text-base md:text-xl text-white/80">
-              Crie sua conta ou faça login agora e teste na prática como é ter uma central de IA,
-              design e performance sob o seu controle.
-            </p>
+            <h2 className="text-3xl md:text-5xl font-extrabold text-white tracking-tight">{lc.cta_title}</h2>
+            <p className="text-base md:text-xl text-white/80">{lc.cta_subtitle}</p>
           </div>
           <Button
             type="button"
@@ -779,7 +770,7 @@ const AuthPage = () => {
               }
             }}
           >
-            Entrar no sistema agora
+            {lc.cta_button}
           </Button>
         </motion.section>
       </div>

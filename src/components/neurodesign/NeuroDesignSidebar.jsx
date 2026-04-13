@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Image as ImageIcon, Wand2 } from 'lucide-react';
+import { LayoutGrid, Image as ImageIcon, Wand2, GraduationCap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NeuroDesignSidebar = ({
@@ -14,7 +14,11 @@ const NeuroDesignSidebar = ({
   onRenameProject,
   onDeleteProject,
   title = 'NeuroDesign',
-  subtitle = 'Design Builder',
+  subtitle,
+  /** Bloco com título no topo da sidebar (ex.: Artes de Culto). NeuroDesign fica só com o menu. */
+  showBrandHeader = false,
+  /** Aba Experts (Gerador categoria Neuro Designer); desligar em variantes que partilham esta sidebar (ex.: Artes de Culto). */
+  showExpertsTab = true,
 }) => {
   const handleSetView = (v) => {
     setView(v);
@@ -24,11 +28,13 @@ const NeuroDesignSidebar = ({
   const asideClass = wrapperClassName ?? 'w-64 shrink-0 border-r border-border bg-background flex flex-col';
   return (
     <aside className={asideClass}>
-      <div className="p-4 border-b border-border">
-        <h2 className="font-semibold text-lg text-foreground">{title}</h2>
-        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-      </div>
-      <nav className="p-2 flex flex-col flex-1 min-h-0">
+      {showBrandHeader ? (
+        <div className="border-b border-border p-4">
+          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+          {subtitle ? <p className="mt-1 text-xs text-muted-foreground">{subtitle}</p> : null}
+        </div>
+      ) : null}
+      <nav className="flex min-h-0 flex-1 flex-col p-2">
         <button
           type="button"
           onClick={() => handleSetView('gallery')}
@@ -62,6 +68,19 @@ const NeuroDesignSidebar = ({
           <Wand2 className="h-4 w-4" />
           Refinamento
         </button>
+        {showExpertsTab && (
+          <button
+            type="button"
+            onClick={() => handleSetView('experts')}
+            className={cn(
+              'w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors mt-2',
+              view === 'experts' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'text-muted-foreground hover:bg-muted'
+            )}
+          >
+            <GraduationCap className="h-4 w-4" />
+            Experts
+          </button>
+        )}
       </nav>
     </aside>
   );

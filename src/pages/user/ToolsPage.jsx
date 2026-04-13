@@ -1,10 +1,11 @@
 import React from 'react';
 import { Helmet } from 'react-helmet';
 import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import { Card, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
-import { ArrowRight, Bot, FileText, BarChart2, Clapperboard, Share2, PenSquare, MessagesSquare, Lightbulb, Search, CalendarDays, Globe, Lock, Palette, Church, Film } from 'lucide-react';
+import { ArrowRight, Bot, FileText, BarChart2, Clapperboard, Share2, PenSquare, MessagesSquare, Lightbulb, Search, CalendarDays, Globe, Lock, Palette, Church, Film, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const allTools = [
@@ -38,7 +39,7 @@ const allTools = [
     },
     { 
         title: 'NeuroDesign', 
-        description: 'Design Builder premium: crie imagens com sujeito, cenário, texto e controle total de composição.', 
+        description: 'Crie imagens com sujeito, cenário, texto e controle total de composição.', 
         icon: <Palette className="h-8 w-8 text-primary" />,
         path: '/ferramentas/neurodesign',
         permissionKey: null,
@@ -49,6 +50,13 @@ const allTools = [
         description: 'Gere vídeos com modelos Veo usando prompt e frames inicial/final.',
         icon: <Film className="h-8 w-8 text-primary" />,
         path: '/ferramentas/neuro-flow',
+        permissionKey: null,
+    },
+    {
+        title: 'NeuroMotion',
+        description: 'Crie videos programaticos com Remotion e tenha preview em tempo real.',
+        icon: <Sparkles className="h-8 w-8 text-primary" />,
+        path: '/ferramentas/neuro-motion',
         permissionKey: null,
     },
     {
@@ -88,6 +96,23 @@ const allTools = [
     },
 ];
 
+const toolsGridVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.07, delayChildren: 0.06 },
+  },
+};
+
+const toolCardVariants = {
+  hidden: { opacity: 0, y: 18 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.42, ease: [0.22, 1, 0.36, 1] },
+  },
+};
+
 const ToolCard = ({ tool, isAllowed }) => {
     const { toast } = useToast();
     const navigate = useNavigate();
@@ -105,22 +130,30 @@ const ToolCard = ({ tool, isAllowed }) => {
         }
     };
 
+    const isGeradorConteudo = tool.path === '/ferramentas/gerador-de-conteudo';
+
     return (
-        <div 
+        <motion.div
+            variants={toolCardVariants}
             onClick={handleClick}
+            whileHover={isAllowed ? { scale: 1.015, transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] } } : undefined}
+            whileTap={isAllowed ? { scale: 0.985 } : undefined}
             className={cn(
-                "group relative h-full rounded-xl transition-all duration-300",
+                "group relative h-full rounded-xl transition-shadow duration-300",
                 isAllowed ? "cursor-pointer" : "cursor-not-allowed",
-                tool.highlight && "ring-2 ring-primary/50 ring-offset-2 ring-offset-background shadow-[0_0_30px_hsl(var(--primary)/0.3)] hover:shadow-[0_0_40px_hsl(var(--primary)/0.5)]"
+                tool.highlight && "ring-2 ring-primary/50 ring-offset-2 ring-offset-background shadow-[0_0_30px_hsl(var(--primary)/0.3)] hover:shadow-[0_0_40px_hsl(var(--primary)/0.5)]",
+                isGeradorConteudo &&
+                  isAllowed &&
+                  "shadow-[0_0_0_1px_hsl(var(--primary)/0.25)] hover:shadow-[0_0_32px_hsl(var(--primary)/0.35),0_0_0_1px_hsl(var(--primary)/0.35)]"
             )}
         >
             {tool.highlight && (
                 <div className="absolute -inset-1 bg-gradient-to-r from-primary to-purple-400 rounded-xl blur opacity-30 group-hover:opacity-60 transition duration-500 animate-pulse"></div>
             )}
             <Card className={cn(
-                "h-full transition-all duration-300 ease-in-out relative bg-card",
-                isAllowed ? "hover:scale-[1.02]" : "bg-muted/50 opacity-70",
-                tool.highlight && "border-primary/50"
+                'h-full transition-colors duration-300 ease-in-out relative bg-card',
+                isAllowed ? '' : 'bg-muted/50 opacity-70',
+                tool.highlight && 'border-primary/50'
             )}>
                 {!isAllowed && (
                     <div className="absolute top-3 right-3 bg-secondary p-2 rounded-full z-10 border">
@@ -136,7 +169,7 @@ const ToolCard = ({ tool, isAllowed }) => {
                 </CardHeader>
                 <CardDescription className="p-6 pt-0">{tool.description}</CardDescription>
             </Card>
-        </div>
+        </motion.div>
     );
 };
 
@@ -151,15 +184,25 @@ const ToolsPage = () => {
                 <meta name="description" content="Explore a suíte de ferramentas de marketing com IA para otimizar suas campanhas." />
             </Helmet>
             <div className="container mx-auto py-8 px-4 sm:px-6 lg:px-8">
-                <div className="mb-8">
+                <motion.div
+                    className="mb-8"
+                    initial={{ opacity: 0, y: -12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+                >
                     <h1 className="text-3xl font-bold tracking-tight">Suíte de Ferramentas</h1>
                     <p className="text-muted-foreground mt-2">Potencialize seu marketing com nossa coleção de ferramentas inteligentes.</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                </motion.div>
+                <motion.div
+                    className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                    variants={toolsGridVariants}
+                    initial="hidden"
+                    animate="visible"
+                >
                     {allTools.map((tool) => (
                         <ToolCard key={tool.title} tool={tool} isAllowed={hasPermission(tool.permissionKey)} />
                     ))}
-                </div>
+                </motion.div>
             </div>
         </>
     );

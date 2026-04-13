@@ -20,14 +20,24 @@ import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { mergeFlowInputDataIntoConfig, filterOverridesByDisabledSupportTypes } from '@/lib/neurodesign/flowConfigMerge';
 import { neuroDesignDefaultConfig } from '@/lib/neurodesign/defaultConfig';
 import { sanitizeNeuroDesignConfigFromAI } from '@/lib/neurodesign/sanitizeConfigFromAI';
-import NeuroDesignFlowModal from '@/components/flow-builder/modals/NeuroDesignFlowModal';
+import NeuroDesignFlowModal, { NEURO_DESIGN_FLOW_RENDER_MODE } from '@/components/flow-builder/modals/NeuroDesignFlowModal';
 import RefineImageModal from '@/components/flow-builder/modals/RefineImageModal';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Checkbox } from '@/components/ui/checkbox';
 import { getFriendlyErrorMessage } from '@/lib/utils';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
 const MIN_SLIDES = 3;
 const MAX_SLIDES = 7;
+
+/** Prompt adicional no Neuro Designer (só esta lâmina); contexto do fluxo junta-se na geração. */
+function stripLeadingContextFromPrompt(fullText, contextPrefix) {
+  const t = String(fullText || '').trim();
+  const c = String(contextPrefix || '').trim();
+  if (!c || !t) return t;
+  if (t.startsWith(c)) return t.slice(c.length).replace(/^\n\n?/, '').trim();
+  return t;
+}
 
 const DIMENSION_OPTIONS = [
   { value: '1:1', label: '1:1' },
@@ -265,7 +275,7 @@ function extractJsonFromResponse(str) {
   }
 }
 
-const CarouselNode = memo(({ data, id }) => {
+const CarouselNode = memo(({ data, id, selected }) => {
   const { onUpdateNodeData, inputData, onAddCarouselSlideImageNode, getFreshInputData } = data;
   const { toast } = useToast();
   const { user } = useAuth();
@@ -310,7 +320,6 @@ const CarouselNode = memo(({ data, id }) => {
     if (slideIndexForNeuroDesign == null) return undefined;
     const idx = slideIndexForNeuroDesign;
     const slidePrompt = (slides[idx]?.prompt ?? '').trim();
-    const fullPrompt = (contextPromptForImage + '\n\n' + slidePrompt).trim();
     const flowOverrides = mergeFlowInputDataIntoConfig(inputData || {});
     const disabled = slides[idx]?.disabledSupportTypes ?? [];
     let flowFiltered = filterOverridesByDisabledSupportTypes(flowOverrides, disabled);
@@ -319,15 +328,32 @@ const CarouselNode = memo(({ data, id }) => {
     if (flowOverrides.subject_gender !== undefined) flowFiltered = { ...flowFiltered, subject_gender: flowOverrides.subject_gender };
     if (flowOverrides.subject_description !== undefined) flowFiltered = { ...flowFiltered, subject_description: flowOverrides.subject_description };
     if (flowOverrides.subject_image_urls !== undefined) flowFiltered = { ...flowFiltered, subject_image_urls: flowOverrides.subject_image_urls };
-    const slideOverrides = slides[idx]?.configOverrides && typeof slides[idx].configOverrides === 'object' ? slides[idx].configOverrides : {};
+
+    const snap = slides[idx]?.neurodesign_flow_editor_config;
+    const hasSnap = snap && typeof snap === 'object' && Object.keys(snap).length > 0;
+    if (hasSnap) {
+      const userAp = stripLeadingContextFromPrompt(snap.additional_prompt, contextPromptForImage);
+      return {
+        ...neuroDesignDefaultConfig(),
+        ...snap,
+        ...flowFiltered,
+        additional_prompt: userAp,
+        dimensions,
+        image_size: imageSize,
+        user_ai_connection_id: selectedImageConnectionId || snap.user_ai_connection_id,
+      };
+    }
+
+    const slideOverridesRaw = slides[idx]?.configOverrides && typeof slides[idx].configOverrides === 'object' ? slides[idx].configOverrides : {};
+    const { additional_prompt: _ignoreAp, ...slideOverrides } = slideOverridesRaw;
     return {
       ...neuroDesignDefaultConfig(),
       ...flowFiltered,
+      ...slideOverrides,
       dimensions,
       image_size: imageSize,
       user_ai_connection_id: selectedImageConnectionId,
-      additional_prompt: fullPrompt,
-      ...slideOverrides,
+      additional_prompt: slidePrompt,
     };
   }, [slideIndexForNeuroDesign, slides, contextPromptForImage, inputData, dimensions, imageSize, selectedImageConnectionId]);
 
@@ -352,6 +378,49 @@ const CarouselNode = memo(({ data, id }) => {
       setSlideIndexForNeuroDesign(null);
     },
     [slideIndexForNeuroDesign, slides, id, onUpdateNodeData, onAddCarouselSlideImageNode, toast]
+  );
+
+  const handleCarouselNeuroEmbeddedSave = useCallback(
+    (cfg) => {
+      if (slideIndexForNeuroDesign == null || !cfg || typeof cfg !== 'object') return;
+      const idx = slideIndexForNeuroDesign;
+      const ap = String(cfg.additional_prompt || '').trim();
+      const ctx = contextPromptForImage.trim();
+      let userOnly = ap;
+      if (ctx && ap.startsWith(ctx)) {
+        userOnly = ap.slice(ctx.length).replace(/^\n\n?/, '').trim();
+      }
+      const snapshot = { ...cfg, additional_prompt: userOnly };
+      const newSlides = [...slides];
+      const existing = newSlides[idx] || {};
+      newSlides[idx] = {
+        ...existing,
+        prompt: userOnly || existing.prompt,
+        neurodesign_flow_editor_config: snapshot,
+      };
+      onUpdateNodeData(id, {
+        slides: newSlides,
+        dimensions: cfg.dimensions,
+        imageSize: cfg.image_size,
+        selectedImageConnectionId: cfg.user_ai_connection_id,
+      });
+      setDimensions(cfg.dimensions);
+      setImageSize(cfg.image_size);
+      setSelectedImageConnectionId(cfg.user_ai_connection_id);
+      setLocalPrompts((prev) => {
+        const next = [...prev];
+        while (next.length < numSlides) next.push('');
+        next[idx] = userOnly || next[idx] || '';
+        return next.slice(0, numSlides);
+      });
+      setNeuroDesignModalOpen(false);
+      setSlideIndexForNeuroDesign(null);
+      toast({
+        title: 'Configuração guardada',
+        description: `Use o play na lâmina ${idx + 1} para gerar a imagem.`,
+      });
+    },
+    [slideIndexForNeuroDesign, slides, contextPromptForImage, id, onUpdateNodeData, toast, numSlides]
   );
 
   const generatorOutput = inputData?.image_generator;
@@ -592,9 +661,9 @@ const CarouselNode = memo(({ data, id }) => {
 
 Padrão obrigatório por lâmina:
 - orientation: uma linha, rótulo da lâmina (ex.: "Capa: logo e título principal", "Problema: gargalo de vendas", "Solução: benefício X").
-- prompt: brief completo para geração da imagem (cena, mood, texto a exibir, descrição visual; pode ser múltiplas linhas).
+- prompt: brief APENAS desta lâmina (cena, mood, texto na imagem se houver). NÃO repita o texto integral das outras lâminas, NÃO cole JSON de cliente/campanha nem o documento completo do fluxo — o sistema envia o contexto na geração.
 
-Além disso, para cada lâmina você pode preencher config (objeto opcional) com as chaves do Neuro Designer que fizerem sentido para aquela lâmina. Use apenas as chaves que conseguir inferir do conteúdo. Valores exatos:
+Além disso, para cada lâmina você pode preencher config (objeto opcional) com as chaves do Neuro Designer que fizerem sentido para aquela lâmina. Não use a chave additional_prompt em config (deixe o brief só em prompt). Valores exatos:
 - quantity: número 1 a 5 (quantidade de pessoas)
 - subject_enabled: true ou false
 - subject_gender: "masculino" ou "feminino"
@@ -639,7 +708,11 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
       const newSlides = Array.from({ length: n }, (_, i) => {
         const s = slideList[i] || {};
         const rawConfig = s.config && typeof s.config === 'object' ? s.config : {};
-        const configOverrides = Object.keys(rawConfig).length > 0 ? sanitizeNeuroDesignConfigFromAI(rawConfig) : undefined;
+        let configOverrides = Object.keys(rawConfig).length > 0 ? sanitizeNeuroDesignConfigFromAI(rawConfig) : undefined;
+        if (configOverrides && 'additional_prompt' in configOverrides) {
+          const { additional_prompt: _drop, ...rest } = configOverrides;
+          configOverrides = Object.keys(rest).length > 0 ? rest : undefined;
+        }
         return {
           ...(slides[i] || {}),
           orientation: newOrientations[i],
@@ -711,13 +784,6 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
         const conn = imageConnections.find((c) => c.id === selectedImageConnectionId);
         const isGoogle = conn?.provider?.toLowerCase() === 'google';
         const fnName = isGoogle ? 'neurodesign-generate-google' : 'neurodesign-generate';
-        const baseConfig = {
-          ...neuroDesignDefaultConfig(),
-          dimensions,
-          image_size: imageSize,
-          user_ai_connection_id: selectedImageConnectionId,
-          additional_prompt: fullPrompt,
-        };
         const flowOverrides = mergeFlowInputDataIntoConfig(freshInputData);
         const disabled = slides[slideIndex]?.disabledSupportTypes ?? [];
         let flowFiltered = filterOverridesByDisabledSupportTypes(flowOverrides, disabled);
@@ -726,15 +792,43 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
         if (flowOverrides.subject_gender !== undefined) flowFiltered = { ...flowFiltered, subject_gender: flowOverrides.subject_gender };
         if (flowOverrides.subject_description !== undefined) flowFiltered = { ...flowFiltered, subject_description: flowOverrides.subject_description };
         if (flowOverrides.subject_image_urls !== undefined) flowFiltered = { ...flowFiltered, subject_image_urls: flowOverrides.subject_image_urls };
-        const slideOverrides = slides[slideIndex]?.configOverrides && typeof slides[slideIndex].configOverrides === 'object' ? slides[slideIndex].configOverrides : {};
-        const config = { ...baseConfig, ...flowFiltered, ...slideOverrides };
+
+        const snap = slides[slideIndex]?.neurodesign_flow_editor_config;
+        const hasSnap = snap && typeof snap === 'object' && Object.keys(snap).length > 0;
+        let config;
+        if (hasSnap) {
+          const freshContext = buildContextPromptForImage(freshInputData);
+          const userAp = String(snap.additional_prompt || '').trim();
+          const additional_prompt = [freshContext, userAp].filter(Boolean).join('\n\n').trim();
+          config = {
+            ...neuroDesignDefaultConfig(),
+            ...snap,
+            ...flowFiltered,
+            additional_prompt,
+            dimensions,
+            image_size: imageSize,
+            user_ai_connection_id: selectedImageConnectionId,
+          };
+        } else {
+          const baseConfig = {
+            ...neuroDesignDefaultConfig(),
+            dimensions,
+            image_size: imageSize,
+            user_ai_connection_id: selectedImageConnectionId,
+            additional_prompt: fullPrompt,
+          };
+          const slideOverrides =
+            slides[slideIndex]?.configOverrides && typeof slides[slideIndex].configOverrides === 'object'
+              ? slides[slideIndex].configOverrides
+              : {};
+          config = { ...baseConfig, ...flowFiltered, ...slideOverrides };
+        }
         const { data: result, error } = await supabase.functions.invoke(fnName, {
           body: {
             projectId: proj.id,
             configId: null,
             config,
             userAiConnectionId: selectedImageConnectionId,
-            style_reference_only: true,
           },
         });
         const errMsg = result?.error || error?.message;
@@ -802,9 +896,12 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
     <>
       <Card className="w-72 border-2 border-amber-500/50 shadow-lg overflow-hidden relative min-h-[120px]">
         <Handle type="target" position={Position.Left} className="!bg-amber-500" />
-        <CardHeader className="flex-row items-center space-x-2 p-3 bg-amber-500/10">
-          <LayoutGrid className="w-5 h-5 text-amber-500 shrink-0" />
-          <CardTitle className="text-base">Carrossel</CardTitle>
+        <CardHeader className="flex flex-row items-center gap-2 p-3 bg-amber-500/10 min-w-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <LayoutGrid className="w-5 h-5 shrink-0 text-amber-500" />
+            <CardTitle className="text-base truncate">Carrossel</CardTitle>
+          </div>
+          <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
         </CardHeader>
         <CardContent className="p-3 space-y-3">
           {hasUpstreamData && (
@@ -1002,7 +1099,7 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
                           setSlideIndexForNeuroDesign(i);
                           setNeuroDesignModalOpen(true);
                         }}
-                        title="Configurar e gerar com Neuro Designer"
+                        title="Configurar no Neuro Designer (Salvar e voltar; geração no play)"
                       >
                         <Paintbrush className="w-4 h-4" />
                       </Button>
@@ -1051,18 +1148,33 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
         </CardContent>
       </Card>
 
-      <NeuroDesignFlowModal
+      <Dialog
         open={neuroDesignModalOpen}
-        onOpenChange={(v) => {
-          if (!v) {
+        onOpenChange={(open) => {
+          if (!open) {
             setNeuroDesignModalOpen(false);
             setSlideIndexForNeuroDesign(null);
           }
         }}
-        inputData={inputData}
-        onResult={handleNeuroDesignResult}
-        initialConfig={neuroDesignInitialConfig}
-      />
+      >
+        <DialogContent className="flex h-[min(720px,90dvh)] w-[min(720px,calc(100vw-2rem))] max-w-3xl flex-col gap-0 overflow-hidden p-0 [&>button]:hidden">
+          {neuroDesignModalOpen && slideIndexForNeuroDesign != null ? (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden nodrag nowheel nopan">
+              <NeuroDesignFlowModal
+                renderMode={NEURO_DESIGN_FLOW_RENDER_MODE.CONFIG_ONLY}
+                onCollapse={() => {
+                  setNeuroDesignModalOpen(false);
+                  setSlideIndexForNeuroDesign(null);
+                }}
+                onEmbeddedSave={handleCarouselNeuroEmbeddedSave}
+                inputData={inputData}
+                initialConfig={neuroDesignInitialConfig}
+                onResult={handleNeuroDesignResult}
+              />
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       <RefineImageModal
         open={refineModalOpen}
@@ -1171,6 +1283,10 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
                 {localOrientations.map((val, i) => {
                   const overrides = slides[i]?.configOverrides && typeof slides[i].configOverrides === 'object' ? slides[i].configOverrides : {};
                   const hasOverrides = Object.keys(overrides).length > 0;
+                  const hasEditorSnap =
+                    slides[i]?.neurodesign_flow_editor_config &&
+                    typeof slides[i].neurodesign_flow_editor_config === 'object' &&
+                    Object.keys(slides[i].neurodesign_flow_editor_config).length > 0;
                   return (
                     <div key={i} className="space-y-1 rounded-md border p-2 bg-muted/20">
                       <Label className="text-xs font-medium">
@@ -1201,6 +1317,9 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
                           Configuração Neuro Designer desta lâmina
                         </summary>
                         <div className="mt-1 pl-2 border-l border-muted-foreground/30">
+                          {hasEditorSnap && (
+                            <p className="text-foreground mb-1">Configuração completa guardada no editor (ícone de pincel).</p>
+                          )}
                           {hasOverrides ? (
                             <ul className="space-y-0.5 list-none">
                               {Object.entries(overrides).map(([k, v]) => (
@@ -1210,9 +1329,9 @@ Exemplo: {"numSlides": 3, "slides": [{"orientation": "Capa: título e subtítulo
                                 </li>
                               ))}
                             </ul>
-                          ) : (
+                          ) : !hasEditorSnap ? (
                             <p>Usar padrão do fluxo (e nós conectados).</p>
-                          )}
+                          ) : null}
                         </div>
                       </details>
                     </div>

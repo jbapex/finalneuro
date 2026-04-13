@@ -5,8 +5,9 @@ import React, { memo, useMemo } from 'react';
     import { FileSearch } from 'lucide-react';
     import { supabase } from '@/lib/customSupabaseClient';
     import { useToast } from '@/components/ui/use-toast';
+    import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
-    const AnalysisNode = memo(({ data, id }) => {
+    const AnalysisNode = memo(({ data, id, selected }) => {
       const { onUpdateNodeData, inputData, selectedAnalysisId, analyses } = data;
       const { toast } = useToast();
 
@@ -49,9 +50,12 @@ import React, { memo, useMemo } from 'react';
       return (
         <Card className="w-64 border-2 border-orange-500/50 shadow-lg">
           <Handle type="target" position={Position.Left} className="!bg-orange-500" />
-          <CardHeader className="flex-row items-center space-x-2 p-3 bg-orange-500/10">
-            <FileSearch className="w-5 h-5 text-orange-500" />
-            <CardTitle className="text-base">Análise de Campanha</CardTitle>
+          <CardHeader className="flex flex-row items-center gap-2 p-3 bg-orange-500/10 min-w-0">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <FileSearch className="w-5 h-5 shrink-0 text-orange-500" />
+              <CardTitle className="text-base truncate">Análise de Campanha</CardTitle>
+            </div>
+            <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
           </CardHeader>
           <CardContent className="p-3">
             <Select onValueChange={handleAnalysisChange} value={selectedAnalysisId} disabled={isDisabled || filteredAnalyses.length === 0}>

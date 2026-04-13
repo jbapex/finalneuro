@@ -10,6 +10,7 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import { v4 as uuidv4 } from 'uuid';
 import ContentViewModal from '@/components/flow-builder/modals/ContentViewModal';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
 function sanitizeFilename(filename) {
   const extension = filename.split('.').pop();
@@ -27,7 +28,7 @@ function sanitizeFilename(filename) {
   return `${sanitized}.${extension}`;
 }
 
-const VideoTranscriberNode = memo(({ id, data }) => {
+const VideoTranscriberNode = memo(({ id, data, selected }) => {
   const { onUpdateNodeData, output, mediaLibraryId: initialMediaId } = data;
   const { toast } = useToast();
   const [videoUrl, setVideoUrl] = useState('');
@@ -257,9 +258,12 @@ const VideoTranscriberNode = memo(({ id, data }) => {
   return (
     <Card className="w-80 border-2 border-red-500/50 shadow-lg">
       <Handle type="target" position={Position.Left} className="!bg-red-500" />
-      <CardHeader className="flex-row items-center space-x-2 p-3 bg-red-500/10">
-        <Youtube className="w-5 h-5 text-red-500" />
-        <CardTitle className="text-base">Transcritor de Vídeo</CardTitle>
+      <CardHeader className="flex flex-row items-center gap-2 p-3 bg-red-500/10 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Youtube className="w-5 h-5 shrink-0 text-red-500" />
+          <CardTitle className="text-base truncate">Transcritor de Vídeo</CardTitle>
+        </div>
+        <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
       </CardHeader>
       <CardContent className="p-3 space-y-3">
         {!isProcessing && !transcript && (

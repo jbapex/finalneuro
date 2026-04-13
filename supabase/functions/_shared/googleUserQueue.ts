@@ -10,8 +10,9 @@
 const userTails = new Map<string, Promise<unknown>>();
 
 export function enqueueUserGoogle<T>(userId: string, work: () => Promise<T>): Promise<T> {
+  // Se `prev` rejeitar, `.then(() => work())` não executa work — a fila ficava bloqueada para sempre.
   const prev = userTails.get(userId) ?? Promise.resolve();
-  const job = prev.then(() => work());
+  const job = prev.catch(() => undefined).then(() => work());
   userTails.set(userId, job.catch(() => {}));
   return job;
 }

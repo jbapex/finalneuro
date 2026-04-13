@@ -15,7 +15,12 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { getFriendlyErrorMessage } from '@/lib/utils';
 import { listUpstreamAgentContextSources, buildUpstreamContextPromptBlock } from '@/lib/flowBuilderUpstreamContext';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 import { Checkbox } from '@/components/ui/checkbox';
+import {
+  MODULE_GENERATOR_CATEGORIES,
+  moduleHasGeneratorCategory,
+} from '@/lib/modules/generatorCategories';
 
 const LlmIntegrationSelector = ({ integrations, selectedId, onSelect, disabled }) => {
     const [open, setOpen] = useState(false);
@@ -73,6 +78,7 @@ const AgentNode = ({ id, data, isConnectable, selected }) => {
     const [isLoading, setIsLoading] = useState(false);
     const [llmIntegrations, setLlmIntegrations] = useState([]);
     const [selectedLlmId, setSelectedLlmId] = useState(data.llm_integration_id || null);
+    const [moduleCategoryFilter, setModuleCategoryFilter] = useState('all');
 
     const handleModuleChange = (moduleId) => {
         const selectedModule = modules.find(m => m.id.toString() === moduleId);
@@ -86,6 +92,16 @@ const AgentNode = ({ id, data, isConnectable, selected }) => {
         () => (modules || []).find(m => m.id.toString() === selectedModuleId),
         [modules, selectedModuleId]
     );
+
+    const modulesFilteredByCategory = useMemo(() => {
+        const list = modules || [];
+        if (moduleCategoryFilter === 'all') return list;
+        const inFilter = list.filter((m) => moduleHasGeneratorCategory(m.config, moduleCategoryFilter));
+        if (selectedModule && !inFilter.some((m) => m.id === selectedModule.id)) {
+            return [selectedModule, ...inFilter];
+        }
+        return inFilter;
+    }, [modules, moduleCategoryFilter, selectedModule]);
     const moduleConfig = selectedModule?.config || { use_client: false, use_campaign: true, use_complementary_text: true };
 
     const clientFromUpstream = inputData?.client?.data;
@@ -335,7 +351,11 @@ Instruções Adicionais: ${refinePrompt ? `Refine o seguinte texto:\n\n${data.ge
                     }
                 });
                 if (typeof onAddAgentOutputNode === 'function') {
-                    onAddAgentOutputNode(id, generatedText, { moduleName: selectedModule?.name || 'Agente de IA' });
+                    onAddAgentOutputNode(id, generatedText, {
+                        moduleName: selectedModule?.name || 'Agente de IA',
+                        llm_integration_id: selectedLlmId,
+                        llm_is_user_connection: Boolean(selectedIntegration?.is_user_connection),
+                    });
                 }
                 toast({
                     title: refinePrompt ? 'Conteúdo Refinado!' : 'Conteúdo Gerado!',
@@ -370,7 +390,11 @@ Instruções Adicionais: ${refinePrompt ? `Refine o seguinte texto:\n\n${data.ge
                     }
                 });
                 if (typeof onAddAgentOutputNode === 'function') {
-                    onAddAgentOutputNode(id, functionData.generatedText, { moduleName: functionData.moduleName });
+                    onAddAgentOutputNode(id, functionData.generatedText, {
+                        moduleName: functionData.moduleName,
+                        llm_integration_id: selectedLlmId,
+                        llm_is_user_connection: Boolean(selectedIntegration?.is_user_connection),
+                    });
                 }
                 toast({
                     title: refinePrompt ? 'Conteúdo Refinado!' : 'Conteúdo Gerado!',
@@ -405,27 +429,58 @@ Instruções Adicionais: ${refinePrompt ? `Refine o seguinte texto:\n\n${data.ge
                     handleClassName="bg-teal-500"
                 />
                 <Handle type="target" position={Position.Left} isConnectable={isConnectable} className="w-3 h-3 !bg-teal-500" />
-                <CardHeader className="flex-row items-center justify-between space-x-2 p-3 bg-teal-500/10">
-                    <div className="flex items-center space-x-2">
-                        <Bot className="w-5 h-5 text-teal-500" />
-                        <CardTitle className="text-base">{data.label || 'Agente de IA'}</CardTitle>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 p-3 bg-teal-500/10 min-w-0">
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                        <Bot className="w-5 h-5 shrink-0 text-teal-500" />
+                        <CardTitle className="text-base truncate">{data.label || 'Agente de IA'}</CardTitle>
                     </div>
-                    <Button onClick={() => handleGenerateContent()} disabled={isGenerationDisabled} size="sm">
-                        {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                        <span className="ml-2">Gerar</span>
-                    </Button>
+                    <div className="flex shrink-0 items-center gap-1">
+                        <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
+                        <Button onClick={() => handleGenerateContent()} disabled={isGenerationDisabled} size="sm">
+                            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                            <span className="ml-2">Gerar</span>
+                        </Button>
+                    </div>
                 </CardHeader>
                 <CardContent className="p-3 flex-grow flex flex-col min-h-0 space-y-2">
+                    <div className="space-y-1">
+                        <Label htmlFor={`agent-cat-${id}`} className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                            Filtrar por categoria
+                        </Label>
+                        <Select
+                            value={moduleCategoryFilter}
+                            onValueChange={setModuleCategoryFilter}
+                            disabled={isLoading}
+                        >
+                            <SelectTrigger id={`agent-cat-${id}`} className="h-8 text-xs">
+                                <SelectValue placeholder="Categoria" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-[min(280px,50vh)]">
+                                <SelectItem value="all">Todos os agentes</SelectItem>
+                                {MODULE_GENERATOR_CATEGORIES.map((cat) => (
+                                    <SelectItem key={cat.id} value={cat.id}>
+                                        {cat.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
                     <Select onValueChange={handleModuleChange} value={selectedModuleId} disabled={isLoading}>
                         <SelectTrigger>
                             <SelectValue placeholder="Selecione um agente..." />
                         </SelectTrigger>
-                        <SelectContent>
-                            {(modules || []).map((module) => (
-                                <SelectItem key={module.id} value={module.id.toString()}>
-                                    {module.name}
-                                </SelectItem>
-                            ))}
+                        <SelectContent className="max-h-[min(280px,50vh)]">
+                            {modulesFilteredByCategory.length === 0 ? (
+                                <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                                    Nenhum agente nesta categoria. Escolha &quot;Todos&quot; ou outra categoria.
+                                </div>
+                            ) : (
+                                modulesFilteredByCategory.map((module) => (
+                                    <SelectItem key={module.id} value={module.id.toString()}>
+                                        {module.name}
+                                    </SelectItem>
+                                ))
+                            )}
                         </SelectContent>
                     </Select>
 

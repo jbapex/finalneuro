@@ -90,3 +90,52 @@ export async function deleteClientContext(id) {
   if (error) throw error;
 }
 
+/** Campos da ficha usados como contexto no Chat IA (alinhado ao cadastro do cliente). */
+const CLIENT_PROFILE_CHAT_SELECT =
+  'id, name, creator_name, niche, style_in_3_words, product_to_promote, target_audience, success_cases, profile_views, followers, appearance_format, catchphrases, phone, about, context_document';
+
+/**
+ * Busca fichas completas de um ou mais clientes (RLS restringe ao usuário).
+ */
+export async function fetchClientProfilesForChat(clientIds) {
+  if (!clientIds?.length) return [];
+  const { data, error } = await supabase
+    .from('clients')
+    .select(CLIENT_PROFILE_CHAT_SELECT)
+    .in('id', clientIds);
+
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Formata a ficha do cliente como texto para mensagem system do chat.
+ */
+export function formatClientProfileForPrompt(client) {
+  if (!client) return '';
+  const lines = [];
+  const push = (label, val) => {
+    const s = val == null ? '' : String(val).trim();
+    if (s) lines.push(`${label}: ${s}`);
+  };
+
+  push('Nome', client.name);
+  push('Nome do criador / persona', client.creator_name);
+  push('Nicho', client.niche);
+  push('Estilo em 3 palavras', client.style_in_3_words);
+  push('Produto a promover', client.product_to_promote);
+  push('Público-alvo', client.target_audience);
+  push('Casos de sucesso', client.success_cases);
+  push('Visualizações do perfil', client.profile_views);
+  push('Seguidores', client.followers);
+  push('Formato de aparência', client.appearance_format);
+  push('Bordões / frases', client.catchphrases);
+  push('Telefone', client.phone);
+  push('Sobre', client.about);
+  push('Documento de contexto (legado)', client.context_document);
+
+  const title = client.name?.trim() || 'Cliente';
+  const body = lines.length > 0 ? lines.join('\n') : '(Ficha sem campos preenchidos.)';
+  return `Ficha de cadastro — ${title}\n${body}`;
+}
+

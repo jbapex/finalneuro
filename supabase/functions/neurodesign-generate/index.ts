@@ -2,6 +2,9 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { enqueueUserGoogle } from "../_shared/googleUserQueue.ts";
 import { NEURODESIGN_PREMIUM_OUTPUT_SUFFIX } from "../_shared/neurodesignPremiumDirective.ts";
+import { logoPlacementInstructionPrefix, logoPlacementPromptSentence } from "../_shared/neurodesignLogoPlacement.ts";
+import { openRouterImageChatModalities } from "../_shared/openRouterImageModalities.ts";
+import { neurodesignFontKeyToPromptLine } from "../_shared/neurodesignFontPrompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -13,12 +16,31 @@ function buildPrompt(config: Record<string, unknown>): string {
   const subjectOff = config.subject_enabled === false || config.subject_enabled === "false";
   const subjectModeRaw = (config.subject_mode as string) || "person";
   const subjectMode = subjectModeRaw === "product" ? "product" : "person";
+  const isChurchArt = config.church_art === true;
+  const styleRefUrlsCheck = Array.isArray(config.style_reference_urls) ? config.style_reference_urls : [];
+  const styleInstrCheck = Array.isArray(config.style_reference_instructions)
+    ? (config.style_reference_instructions as string[])
+    : [];
+  /** Referência de estilo + pelo menos um texto no input por referência: prioridade sobre layout/fontes do formulário. */
+  const styleRefFormOverride =
+    !isChurchArt &&
+    styleRefUrlsCheck.some((u: unknown) => typeof u === "string" && u.trim().length > 0) &&
+    styleInstrCheck.some((s: string) => typeof s === "string" && s.trim().length > 0);
 
   const restrictionParts: string[] = [];
   if (textOff) restrictionParts.push("OBRIGATÓRIO: Não incluir texto, títulos, slogans ou botões na imagem. Imagem apenas visual, sem nenhuma escrita.");
   if (subjectOff) restrictionParts.push("OBRIGATÓRIO: Não incluir pessoas, rostos ou figuras humanas na imagem. Imagem totalmente sem sujeito/pessoa.");
+  if (styleRefFormOverride) {
+    restrictionParts.push(
+      "PRIORIDADE MÁXIMA — REFERÊNCIA DE ESTILO: Há imagens de referência de estilo com instruções por referência. Essas referências e instruções prevalecem sobre tipografia, cores de texto, posicionamento de blocos de texto, faixas/formas atrás do texto, gradientes de texto, enquadramento/plano, posição do sujeito no quadro e presets de estilo visual (tags, tom, blur). Reproduza fontes, hierarquia, alinhamento, layout e estética conforme as referências e as instruções. Se o formulário tiver cores de iluminação (ambiente, contorno, preenchimento), essas são obrigatórias na luz e paleta da cena em conjunto com a referência. O formulário define apenas textos literais a exibir (se ativado) e conteúdo semântico (nicho, ambiente); não o desenho gráfico final.",
+    );
+  }
+  if (!textOff && config.text_enabled && !isChurchArt) {
+    restrictionParts.push(
+      "OBRIGATÓRIO — TEXTO EXATO: Não gere texto a mais na imagem. Use apenas o conteúdo literal dos campos de texto; não invente slogans, linhas extra, rodapés, letras miúdas, disclaimers, hashtags ou marcas d'água.",
+    );
+  }
 
-  const fontLabel: Record<string, string> = { sans: "sans serifa", serif: "serifa", bold: "negrito", modern: "moderno" };
   const shapeLabel: Record<string, string> = { rounded_rectangle: "retângulo arredondado", banner: "faixa/banner", pill: "pill/cápsula" };
   const ZONE_TO_LABEL: Record<string, string> = {
     "top-left": "zona superior esquerda", "top-center": "zona superior centro", "top-right": "zona superior direita",
@@ -57,7 +79,6 @@ function buildPrompt(config: Record<string, unknown>): string {
   }
 
   const textBlockParts: string[] = [];
-  const isChurchArt = config.church_art === true;
   if (isChurchArt) {
     const fp = (config.footer_pastor_presidente as string)?.trim() || "";
     const fi = (config.footer_igreja_nome as string)?.trim() || "";
@@ -96,8 +117,18 @@ function buildPrompt(config: Record<string, unknown>): string {
         textBlockParts.push("O texto exibido na imagem deve ser o mesmo que aparece na(s) imagem(ns) de referência anexa(s), reproduzindo-o de forma legível e integrada à cena.");
       }
       if (customText) {
-        textBlockParts.push("OBRIGATÓRIO - TEXTO VISÍVEL NA IMAGEM: A arte deve exibir este texto de forma clara e legível, sem alterar uma letra: \"" + customText + "\".");
-        if (fontDesc) textBlockParts.push("Fonte/estilo do texto: " + fontDesc + ".");
+        textBlockParts.push(
+          "OBRIGATÓRIO - TEXTO VISÍVEL NA IMAGEM: A arte deve exibir apenas este texto, sem alterar uma letra: \"" +
+            customText +
+            "\". Não inclua na imagem nenhum outro texto, slogan ou linha extra.",
+        );
+        if (fontDesc && !styleRefFormOverride) {
+          textBlockParts.push(
+            "PRIORIDADE TIPOGRAFIA — TEXTO LIVRE: " +
+              fontDesc +
+              ". Aplicar este estilo ou família ao texto acima o mais fielmente possível (formato das letras, peso, personalidade); não usar fonte genérica diferente sem necessidade.",
+          );
+        }
       }
       if (!useRefText && !customText) {
         textBlockParts.push("Não incluir texto, títulos, subtítulos ou botões na imagem (nenhum texto foi definido pelo usuário).");
@@ -111,6 +142,17 @@ function buildPrompt(config: Record<string, unknown>): string {
     const posH2 = resolvePositionPhrase(String(config.subheadline_zone || ""), String(config.subheadline_position || ""), textPos);
     const posCta = resolvePositionPhrase(String(config.cta_zone || ""), String(config.cta_position || ""), textPos);
     if (h1 || h2 || cta) {
+      if (styleRefFormOverride) {
+        const textLines: string[] = [];
+        if (h1) textLines.push(`Título (conteúdo literal): "${h1}"`);
+        if (h2) textLines.push(`Subtítulo (conteúdo literal): "${h2}"`);
+        if (cta) textLines.push(`CTA (conteúdo literal): "${cta}"`);
+        textBlockParts.push(
+          "OBRIGATÓRIO - TEXTO NA IMAGEM: " +
+            textLines.join(". ") +
+            ". Tipografia, posições e estilo dos textos devem seguir as imagens de referência de estilo e as instruções por referência, não os campos de layout/fonte do formulário. Não inclua na imagem nenhum outro texto visível além destes literais.",
+        );
+      } else {
       const textLines: string[] = [];
       if (h1) textLines.push(`Título em destaque: "${h1}"`);
       if (h2) textLines.push(`Subtítulo: "${h2}"`);
@@ -126,12 +168,16 @@ function buildPrompt(config: Record<string, unknown>): string {
       posPhrase += " Incluir na imagem APENAS estes textos; não adicionar título, subtítulo ou botão que não tenham sido especificados.";
       textBlockParts.push(
         "OBRIGATÓRIO - TEXTO VISÍVEL NA IMAGEM: A arte deve exibir este texto de forma clara e legível, sem alterar uma letra: " +
-          textLines.join(". ") + ". " + posPhrase
+          textLines.join(". ") +
+          ". " +
+          posPhrase +
+          " Não inclua slogans, rodapés ou texto promocional extra.",
       );
       if (config.text_gradient) textBlockParts.push("O texto deve ter efeito de gradiente (degradê nas letras).");
       if (h1) {
         const f = fieldFont(config, "headline");
-        if (f && fontLabel[f]) textBlockParts.push(`Fonte do título: ${fontLabel[f]}.`);
+        const fontLine = neurodesignFontKeyToPromptLine("título", f);
+        if (fontLine) textBlockParts.push(fontLine);
         const c = fieldColor(config, "headline");
         if (c) textBlockParts.push(`Cor do título: ${c}.`);
         const sh = fieldShape(config, "headline");
@@ -139,7 +185,8 @@ function buildPrompt(config: Record<string, unknown>): string {
       }
       if (h2) {
         const f = fieldFont(config, "subheadline");
-        if (f && fontLabel[f]) textBlockParts.push(`Fonte do subtítulo: ${fontLabel[f]}.`);
+        const fontLine = neurodesignFontKeyToPromptLine("subtítulo", f);
+        if (fontLine) textBlockParts.push(fontLine);
         const c = fieldColor(config, "subheadline");
         if (c) textBlockParts.push(`Cor do subtítulo: ${c}.`);
         const sh = fieldShape(config, "subheadline");
@@ -147,11 +194,13 @@ function buildPrompt(config: Record<string, unknown>): string {
       }
       if (cta) {
         const f = fieldFont(config, "cta");
-        if (f && fontLabel[f]) textBlockParts.push(`Fonte do CTA: ${fontLabel[f]}.`);
+        const fontLine = neurodesignFontKeyToPromptLine("CTA", f);
+        if (fontLine) textBlockParts.push(fontLine);
         const c = fieldColor(config, "cta");
         if (c) textBlockParts.push(`Cor do CTA: ${c}.`);
         const sh = fieldShape(config, "cta");
         if (sh) textBlockParts.push(`CTA sobre faixa/forma de destaque atrás (${sh.style}, cor ${sh.color}).`);
+      }
       }
     } else {
       textBlockParts.push("Não incluir texto, títulos, subtítulos ou botões na imagem (nenhum texto foi definido pelo usuário).");
@@ -189,12 +238,30 @@ function buildPrompt(config: Record<string, unknown>): string {
   if (useScenario && scenarioUrls.length > 0) {
     parts.push("Use as imagens de cenário anexas como referência para o ambiente/fundo. O cenário da arte deve ser inspirado ou reproduzir o ambiente dessas fotos.");
   }
-  const colors = [config.ambient_color, config.rim_light_color, config.fill_light_color].filter(Boolean) as string[];
-  if (colors.length) parts.push(`Iluminação e cores: ${colors.join(", ")}.`);
+  const ambientHex = typeof config.ambient_color === "string" && String(config.ambient_color).trim()
+    ? String(config.ambient_color).trim()
+    : "";
+  const rimHex = typeof config.rim_light_color === "string" && String(config.rim_light_color).trim()
+    ? String(config.rim_light_color).trim()
+    : "";
+  const fillHex = typeof config.fill_light_color === "string" && String(config.fill_light_color).trim()
+    ? String(config.fill_light_color).trim()
+    : "";
+  const lightingParts: string[] = [];
+  if (ambientHex) lightingParts.push(`luz/cor ambiente (${ambientHex})`);
+  if (rimHex) lightingParts.push(`luz de contorno/rim (${rimHex})`);
+  if (fillHex) lightingParts.push(`luz de preenchimento (${fillHex})`);
+  if (lightingParts.length) {
+    parts.push(
+      "PRIORIDADE — COR E ILUMINAÇÃO (formulário): " +
+        lightingParts.join("; ") +
+        ". Aplicar de forma visível e intencional na cena e na iluminação; não ignorar estes valores.",
+    );
+  }
   const shot = config.shot_type as string;
   const layoutPos = config.layout_position as string;
-  if (shot) parts.push(`Enquadramento: ${shot}.`);
-  if (layoutPos) parts.push(`Posição do sujeito: ${layoutPos}.`);
+  if (!styleRefFormOverride && shot) parts.push(`Enquadramento: ${shot}.`);
+  if (!styleRefFormOverride && layoutPos) parts.push(`Posição do sujeito: ${layoutPos}.`);
   if (isChurchArt) {
     parts.push("Arte de culto para igreja. Composição: tema principal, sub-tema ou direção, preletor com foto, data e horário, louvores; rodapé fixo em três colunas conforme instruções de texto.");
   }
@@ -207,8 +274,18 @@ function buildPrompt(config: Record<string, unknown>): string {
       if (useRefText) parts.push("Espaço reservado para texto na composição. O texto exibido deve ser o mesmo das imagens de referência anexas.");
       if (customText) {
     parts.push("Espaço reservado para texto na composição.");
-        parts.push("O texto exibido na imagem deve ser exatamente: " + JSON.stringify(customText) + ".");
-        if (fontDesc) parts.push("Fonte/estilo do texto: " + fontDesc + ".");
+        parts.push(
+          "O texto exibido na imagem deve ser exatamente: " +
+            JSON.stringify(customText) +
+            ". Não inclua outro texto na imagem além deste literal.",
+        );
+        if (fontDesc && !styleRefFormOverride) {
+          parts.push(
+            "PRIORIDADE TIPOGRAFIA — TEXTO LIVRE: " +
+              fontDesc +
+              ". Aplicar este estilo ou família ao texto acima o mais fielmente possível (formato das letras, peso, personalidade); não usar fonte genérica diferente sem necessidade.",
+          );
+        }
       }
       if (!useRefText && !customText) parts.push("Não incluir texto, títulos, subtítulos ou botões na imagem (nenhum texto foi definido pelo usuário).");
     } else {
@@ -216,6 +293,13 @@ function buildPrompt(config: Record<string, unknown>): string {
     const h2 = (config.subheadline_h2 as string)?.trim() || "";
     const cta = (config.cta_button_text as string)?.trim() || "";
     if (h1 || h2 || cta) {
+      if (styleRefFormOverride) {
+        parts.push(
+          "Texto na composição (apenas conteúdo literal; desenho tipográfico e layout conforme referências de estilo): " +
+            [h1, h2, cta].filter(Boolean).map((t) => `"${t}"`).join(", ") +
+            ". Não inclua na imagem nenhum outro texto além destes literais.",
+        );
+      } else {
       parts.push("Espaço reservado para texto na composição.");
       parts.push("O texto exibido na imagem deve ser exatamente: " + [h1, h2, cta].filter(Boolean).map((t) => `"${t}"`).join(", ") + ".");
       const textPos = (config.text_position as string)?.trim() || "centro";
@@ -231,10 +315,12 @@ function buildPrompt(config: Record<string, unknown>): string {
         parts.push("Não incluir na imagem título, subtítulo ou CTA que não tenham sido listados acima.");
       }
       parts.push("Incluir na imagem APENAS estes textos; não adicionar título, subtítulo ou botão que não tenham sido especificados.");
+      parts.push("Não incluir texto extra, slogans ou rodapés na imagem.");
       if (config.text_gradient) parts.push("O texto na imagem deve ter efeito de gradiente (degradê nas letras), visível e aplicado ao título e subtítulo.");
       if (h1) {
         const f = fieldFont(config, "headline");
-        if (f && fontLabel[f]) parts.push(`Fonte do título: ${fontLabel[f]}.`);
+        const fontLine = neurodesignFontKeyToPromptLine("título", f);
+        if (fontLine) parts.push(fontLine);
         const c = fieldColor(config, "headline");
         if (c) parts.push(`Cor do título: ${c}.`);
         const sh = fieldShape(config, "headline");
@@ -242,7 +328,8 @@ function buildPrompt(config: Record<string, unknown>): string {
       }
       if (h2) {
         const f = fieldFont(config, "subheadline");
-        if (f && fontLabel[f]) parts.push(`Fonte do subtítulo: ${fontLabel[f]}.`);
+        const fontLine = neurodesignFontKeyToPromptLine("subtítulo", f);
+        if (fontLine) parts.push(fontLine);
         const c = fieldColor(config, "subheadline");
         if (c) parts.push(`Cor do subtítulo: ${c}.`);
         const sh = fieldShape(config, "subheadline");
@@ -250,11 +337,13 @@ function buildPrompt(config: Record<string, unknown>): string {
       }
       if (cta) {
         const f = fieldFont(config, "cta");
-        if (f && fontLabel[f]) parts.push(`Fonte do CTA: ${fontLabel[f]}.`);
+        const fontLine = neurodesignFontKeyToPromptLine("CTA", f);
+        if (fontLine) parts.push(fontLine);
         const c = fieldColor(config, "cta");
         if (c) parts.push(`Cor do CTA: ${c}.`);
         const sh = fieldShape(config, "cta");
         if (sh) parts.push(`CTA sobre faixa/forma de destaque (${sh.style}, cor ${sh.color}).`);
+      }
       }
     } else {
       parts.push("Não incluir texto, títulos, subtítulos ou botões na imagem (nenhum texto foi definido pelo usuário).");
@@ -263,13 +352,15 @@ function buildPrompt(config: Record<string, unknown>): string {
   }
   const attrs = (config.visual_attributes as Record<string, unknown>) || {};
   const tags = Array.isArray(attrs.style_tags) ? attrs.style_tags : [];
-  if (tags.length) parts.push(`Estilo: ${tags.join(", ")}.`);
-  if (attrs.sobriety != null) parts.push(`Tom visual: ${Number(attrs.sobriety) <= 50 ? "mais criativo" : "mais profissional"}.`);
-  if (attrs.ultra_realistic) parts.push("Ultra realista.");
-  if (attrs.blur_enabled) parts.push("Blur de fundo suave.");
-  if (attrs.lateral_gradient_enabled) parts.push("Degradê lateral.");
-  if (config.floating_elements_enabled && (config.floating_elements_text as string)?.trim()) {
-    parts.push(`Elementos flutuantes: ${(config.floating_elements_text as string).trim()}.`);
+  if (!styleRefFormOverride) {
+    if (tags.length) parts.push(`Estilo: ${tags.join(", ")}.`);
+    if (attrs.sobriety != null) parts.push(`Tom visual: ${Number(attrs.sobriety) <= 50 ? "mais criativo" : "mais profissional"}.`);
+    if (attrs.ultra_realistic) parts.push("Ultra realista.");
+    if (attrs.blur_enabled) parts.push("Blur de fundo suave.");
+    if (attrs.lateral_gradient_enabled) parts.push("Degradê lateral.");
+    if (config.floating_elements_enabled && (config.floating_elements_text as string)?.trim()) {
+      parts.push(`Elementos flutuantes: ${(config.floating_elements_text as string).trim()}.`);
+    }
   }
   const styleRefs = Array.isArray(config.style_reference_urls) ? config.style_reference_urls : [];
   const styleInstructions = Array.isArray(config.style_reference_instructions) ? config.style_reference_instructions as string[] : [];
@@ -284,9 +375,11 @@ function buildPrompt(config: Record<string, unknown>): string {
     else parts.push("Copie e reproduza o estilo visual das imagens de referência anexas: cores, iluminação, composição e estética. A imagem gerada deve ser semelhante ao estilo que foi enviado.");
   }
   const logoUrl = (config.logo_url as string)?.trim();
-  if (logoUrl) parts.push("Inclua a logo anexa na arte, em posição visível e adequada (ex.: canto inferior, junto ao texto ou à marca).");
+  if (logoUrl) parts.push(logoPlacementPromptSentence(config.logo_position as string));
   const dims = (config.dimensions as string) || "1:1";
   if (textOff) {
+    parts.push(`Formato: ${dims}.`);
+  } else if (styleRefFormOverride) {
     parts.push(`Formato: ${dims}.`);
   } else {
   parts.push(`Formato: ${dims}. Safe area para texto.`);
@@ -322,8 +415,6 @@ function getAspectRatio(dimensions: string): string {
 const STYLE_REFERENCE_INSTRUCTION =
   "Copie o estilo das imagens de referência anexas. A imagem gerada deve ser semelhante ao estilo enviado: reproduza cores, iluminação, composição e estética visual. ";
 
-const LOGO_INSTRUCTION = "Inclua a logo anexa na arte, em posição visível e adequada (ex.: canto inferior, junto ao texto ou à marca). ";
-
 const SCENARIO_INSTRUCTION =
   "Use as imagens de cenário anexas como referência para o ambiente/fundo da imagem. O cenário da arte deve ser inspirado ou reproduzir o ambiente dessas fotos. ";
 
@@ -337,7 +428,8 @@ async function generateWithOpenRouter(
   styleInstruction?: string,
   logoUrl?: string,
   scenarioPhotoUrls: string[] = [],
-  subjectInstruction?: string
+  subjectInstruction?: string,
+  logoPosition?: string
 ): Promise<{ url: string }[]> {
   const baseUrl = conn.api_url.replace(/\/$/, "");
   const url = `${baseUrl}/chat/completions`;
@@ -349,7 +441,7 @@ async function generateWithOpenRouter(
     textPrompt = instr + textPrompt;
   }
   if (styleReferenceUrls.length > 0) textPrompt = (styleInstruction || STYLE_REFERENCE_INSTRUCTION) + textPrompt;
-  if (logoUrl?.trim()) textPrompt = LOGO_INSTRUCTION + textPrompt;
+  if (logoUrl?.trim()) textPrompt = logoPlacementInstructionPrefix(logoPosition) + textPrompt;
   const hasSubject = subjectImageUrls.length > 0;
   const hasStyle = styleReferenceUrls.length > 0;
   const hasScenario = scenarioPhotoUrls.length > 0;
@@ -367,7 +459,7 @@ async function generateWithOpenRouter(
   const body: Record<string, unknown> = {
     model,
     messages: [{ role: "user", content }],
-    modalities: ["image", "text"],
+    modalities: openRouterImageChatModalities(model),
     stream: false,
     image_config: { aspect_ratio: getAspectRatio(dimensions) },
   };
@@ -434,7 +526,8 @@ async function generateWithGoogleGemini(
   styleInstruction?: string,
   logoUrl?: string,
   scenarioPhotoUrls: string[] = [],
-  subjectInstruction?: string
+  subjectInstruction?: string,
+  logoPosition?: string
 ): Promise<{ url: string }[]> {
   const baseUrl = conn.api_url.replace(/\/$/, "");
   const model = conn.default_model || "gemini-2.5-flash-image";
@@ -447,7 +540,7 @@ async function generateWithGoogleGemini(
     textPrompt = instr + textPrompt;
   }
   if (styleReferenceUrls.length > 0) textPrompt = (styleInstruction || STYLE_REFERENCE_INSTRUCTION) + textPrompt;
-  if (logoUrl?.trim()) textPrompt = LOGO_INSTRUCTION + textPrompt;
+  if (logoUrl?.trim()) textPrompt = logoPlacementInstructionPrefix(logoPosition) + textPrompt;
   const urlsToFetch: string[] = [
     ...subjectImageUrls.slice(0, 2),
     ...styleReferenceUrls.slice(0, 3),
@@ -574,6 +667,15 @@ serve(async (req) => {
       const base = styleInstruction ?? STYLE_REFERENCE_INSTRUCTION;
       styleInstruction = base + " Use a referência apenas para estilo visual. Os textos, slogans e logos a exibir são os descritos no prompt abaixo; não copie o texto ou a marca das imagens de referência.";
     }
+    const styleRefFormOverrideApi =
+      config.church_art !== true &&
+      styleReferenceUrls.length > 0 &&
+      styleInstructionsArr.some((s) => typeof s === "string" && s.trim().length > 0);
+    if (styleRefFormOverrideApi && styleInstruction) {
+      styleInstruction =
+        "PRIORIDADE ABSOLUTA SOBRE TIPOGRAFIA E LAYOUT DO FORMULÁRIO: reproduza fontes, hierarquia, alinhamento e composição conforme as referências e instruções; ignore instruções conflituosas de tipografia/layout do formulário. " +
+        styleInstruction;
+    }
     const hasRef = styleReferenceUrls.length > 0;
     const hasSubject = subjectImageUrls.length > 0;
     const hasColors = [config.ambient_color, config.rim_light_color, config.fill_light_color].some((c) => typeof c === "string" && c.trim());
@@ -584,6 +686,7 @@ serve(async (req) => {
       else promptToUse = priority + prompt;
     }
     const logoUrl = (config.logo_url && typeof config.logo_url === "string" && config.logo_url.trim()) ? config.logo_url.trim() : undefined;
+    const logoPosition = typeof config.logo_position === "string" ? config.logo_position.trim() : undefined;
     const subjectModeRaw = (config.subject_mode as string) || "person";
     const subjectMode = subjectModeRaw === "product" ? "product" : "person";
     const subjectInstruction = subjectMode === "product" ? SUBJECT_PRODUCT_INSTRUCTION : SUBJECT_FACE_INSTRUCTION;
@@ -628,7 +731,8 @@ serve(async (req) => {
                 styleInstruction,
                 logoUrl,
                 scenarioPhotoUrls,
-                subjectInstruction
+                subjectInstruction,
+                logoPosition,
               );
             } else if (apiUrl.includes("generativelanguage") || conn.provider?.toLowerCase() === "google") {
               providerLabel = "google";
@@ -645,7 +749,8 @@ serve(async (req) => {
                   styleInstruction,
                   logoUrl,
                   scenarioPhotoUrls,
-                  subjectInstruction
+                  subjectInstruction,
+                  logoPosition,
                 )
               );
             }

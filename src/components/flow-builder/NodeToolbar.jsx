@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Users, Target, Bot, MessageSquare, BrainCircuit, FileSearch, Paintbrush, Youtube, SearchCode, Globe, BookOpen, FileText, LayoutGrid, ImageIcon, Palette, Type, User } from 'lucide-react';
+import { Users, Bot, MessageSquare, FileSearch, Paintbrush, Youtube, SearchCode, Globe, BookOpen, FileText, LayoutGrid, ImageIcon, Palette, Type, User } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const NodeToolbar = ({ addNode, isLoadingData }) => {
@@ -11,7 +11,6 @@ const NodeToolbar = ({ addNode, isLoadingData }) => {
             nodes: [
                 { type: 'client', label: 'Adicionar Cliente', icon: Users },
                 { type: 'context', label: 'Adicionar Contexto', icon: FileText, iconColor: 'text-violet-500' },
-                { type: 'campaign', label: 'Adicionar Campanha', icon: Target },
                 { type: 'knowledge', label: 'Fonte de Conhecimento', icon: BookOpen, iconColor: 'text-yellow-500' },
             ]
         },
@@ -35,7 +34,6 @@ const NodeToolbar = ({ addNode, isLoadingData }) => {
         {
             title: 'Ferramentas Avançadas',
             nodes: [
-                { type: 'planning', label: 'Planejamento', icon: BrainCircuit },
                 { type: 'analysis', label: 'Análise', icon: FileSearch },
                 { type: 'image_generator', label: 'Gerador de Imagem', icon: Paintbrush },
                 { type: 'carousel', label: 'Adicionar Carrossel', icon: LayoutGrid, iconColor: 'text-amber-500' },

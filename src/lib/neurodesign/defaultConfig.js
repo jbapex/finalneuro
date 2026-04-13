@@ -4,6 +4,23 @@
  * uma config completa à API e obter o mesmo prompt estruturado (sujeito, nicho,
  * ambiente, cores, enquadramento, estilo, referências, logo, formato).
  */
+/**
+ * Garante que a config tenha todas as chaves esperadas (arrays, visual_attributes, etc.).
+ * Evita que o builder receba só `{ user_ai_connection_id }` e apague referências de estilo e outros campos.
+ */
+export function mergeNeuroDesignDefaults(partial) {
+  const base = neuroDesignDefaultConfig();
+  const p = partial && typeof partial === 'object' ? partial : {};
+  return {
+    ...base,
+    ...p,
+    visual_attributes: {
+      ...base.visual_attributes,
+      ...(p.visual_attributes && typeof p.visual_attributes === 'object' ? p.visual_attributes : {}),
+    },
+  };
+}
+
 export function neuroDesignDefaultConfig() {
   return {
     user_ai_connection_id: null,
@@ -52,6 +69,8 @@ export function neuroDesignDefaultConfig() {
     cta_shape_color: '',
     cta_zone: '',
     logo_url: '',
+    /** Zona 3×3 (top-left … bottom-right) ou '' = automático */
+    logo_position: '',
     niche_project: '',
     environment: '',
     use_scenario_photos: false,

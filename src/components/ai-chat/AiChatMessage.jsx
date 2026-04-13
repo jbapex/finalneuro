@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
     import { motion } from 'framer-motion';
     import ReactMarkdown from 'react-markdown';
-    import { Bot, User, Loader2, Volume2, Download, Copy, RefreshCw, Play, Heart, ThumbsUp, ThumbsDown, Lightbulb, ChevronDown, ChevronUp, ImageIcon } from 'lucide-react';
-    import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+    import { Bot, User, Loader2, Volume2, Download, Copy, RefreshCw, Play, Heart, ThumbsUp, ThumbsDown, ChevronDown, ChevronUp, ImageIcon, FileText, Lightbulb } from 'lucide-react';
+import AiChatLiveReasoningPanel from '@/components/ai-chat/AiChatLiveReasoningPanel';
+    import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
     import { Button } from '@/components/ui/button';
     import { cn } from '@/lib/utils';
 
@@ -22,6 +23,13 @@ import React, { useState, useEffect, useMemo } from 'react';
         return { markdownSource: display || neuroPrompt, neuroPrompt };
       }
       return { markdownSource: s, neuroPrompt: null };
+    }
+
+    function formatFileSize(bytes) {
+      const n = Number(bytes) || 0;
+      if (n < 1024) return `${n} B`;
+      if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+      return `${(n / (1024 * 1024)).toFixed(2)} MB`;
     }
 
     const chatMarkdownComponents = {
@@ -72,49 +80,137 @@ import React, { useState, useEffect, useMemo } from 'react';
       return <ReactMarkdown components={chatMarkdownComponents}>{displayedContent}</ReactMarkdown>;
     };
     
-    const AiChatMessage = ({ message, className, isStreaming, onStreamingFinished, aiName = 'ONE', suggestedPrompts, suggestedPromptsLoading, onSuggestedPromptClick, onApplyNeuroDesign }) => {
+    const AiChatMessage = ({
+      message,
+      className,
+      isStreaming,
+      onStreamingFinished,
+      aiName = 'ONE',
+      connectionLogoUrl = null,
+      suggestedPrompts,
+      suggestedPromptsLoading,
+      onSuggestedPromptClick,
+      onApplyNeuroDesign,
+    }) => {
       const { role, content } = message;
       const isUser = role === 'user';
       const [copied, setCopied] = useState(false);
-      const [reasoningOpen, setReasoningOpen] = useState(true);
+      const [logoError, setLogoError] = useState(false);
+
+      useEffect(() => {
+        setLogoError(false);
+      }, [connectionLogoUrl]);
 
       let renderableContent;
       let reasoningContent;
-      if (typeof content === 'string') {
+      let userImageUrls = [];
+      /** @type {{ name: string, size: number, kind: string }[] | null} */
+      let userV2Files = null;
+      let userV2Text = '';
+
+      if (isUser) {
+        if (typeof content === 'string') {
           renderableContent = content;
-      } else if (content && typeof content === 'object') {
-          if (content.text != null && content.reasoning != null) {
-              renderableContent = content.text;
-              reasoningContent = typeof content.reasoning === 'string' ? content.reasoning : String(content.reasoning);
-          } else if (content.type === 'chat' && typeof content.content === 'string') {
-              renderableContent = content.content;
-          } else if (content.type === 'suggestion' && typeof content.explanation === 'string') {
-              renderableContent = content.explanation;
-              if (content.updates) {
-                renderableContent += `\n\n**Sugestão de Alterações:**\n\`\`\`json\n${JSON.stringify(content.updates, null, 2)}\n\`\`\``;
+        } else if (content && typeof content === 'object' && content.v === 2) {
+          userV2Files = Array.isArray(content.files) ? content.files : [];
+          userV2Text = (content.text || '').trim();
+          if (Array.isArray(content.apiParts)) {
+            for (const p of content.apiParts) {
+              if (p?.type === 'image_url' && p.image_url?.url) {
+                userImageUrls.push(String(p.image_url.url));
               }
-          } else {
-              renderableContent = `\`\`\`json\n${JSON.stringify(content, null, 2)}\n\`\`\``;
+            }
           }
+          const nameLine = userV2Files.map((f) => f.name).filter(Boolean).join(', ');
+          renderableContent = [userV2Text, nameLine ? `Anexos: ${nameLine}` : ''].filter(Boolean).join('\n\n');
+        } else if (content && typeof content === 'object' && content.type === 'chat_user_v2') {
+          let t = (content.text || '').trim();
+          if (content.hadImages && content.imageCount > 0) {
+            t += `\n\n📎 ${content.imageCount} imagem(ns) anexada(s) (miniatura não guardada no histórico)`;
+          }
+          if (content.hadPdfs && content.pdfCount > 0) {
+            t += `\n\n📄 ${content.pdfCount} PDF (conteúdo não guardado no histórico)`;
+          }
+          renderableContent = t;
+        } else if (Array.isArray(content)) {
+          const texts = [];
+          for (const p of content) {
+            if (p?.type === 'text' && p.text) texts.push(p.text);
+            if (p?.type === 'image_url' && p.image_url?.url) userImageUrls.push(String(p.image_url.url));
+          }
+          renderableContent = texts.join('\n\n');
+        } else if (content && typeof content === 'object' && content.text != null) {
+          renderableContent = String(content.text);
+        } else {
+          renderableContent = String(content ?? '');
+        }
+      } else if (typeof content === 'string') {
+        renderableContent = content;
+      } else if (content && typeof content === 'object') {
+        if (content.sseStreaming === true) {
+          renderableContent = String(content.text ?? '');
+          reasoningContent =
+            typeof content.reasoning === 'string' ? content.reasoning : String(content.reasoning ?? '');
+        } else if (content.text != null && content.reasoning != null) {
+          renderableContent = content.text;
+          reasoningContent = typeof content.reasoning === 'string' ? content.reasoning : String(content.reasoning);
+        } else if (content.type === 'chat' && typeof content.content === 'string') {
+          renderableContent = content.content;
+        } else if (content.type === 'suggestion' && typeof content.explanation === 'string') {
+          renderableContent = content.explanation;
+          if (content.updates) {
+            renderableContent += `\n\n**Sugestão de Alterações:**\n\`\`\`json\n${JSON.stringify(content.updates, null, 2)}\n\`\`\``;
+          }
+        } else {
+          renderableContent = `\`\`\`json\n${JSON.stringify(content, null, 2)}\n\`\`\``;
+        }
       } else {
-          renderableContent = String(content);
+        renderableContent = String(content);
       }
 
-      const { markdownSource, neuroPrompt } = useMemo(
-        () => splitNeuroDesignBrief(renderableContent),
-        [renderableContent]
-      );
-    
+      const { markdownSource, neuroPrompt } = useMemo(() => {
+        if (isUser) {
+          return { markdownSource: renderableContent, neuroPrompt: null };
+        }
+        return splitNeuroDesignBrief(renderableContent);
+      }, [isUser, renderableContent]);
+
       const handleCopy = () => {
-        if (typeof renderableContent !== 'string') return;
-        const toCopy =
-          neuroPrompt && markdownSource
+        let toCopy = isUser
+          ? markdownSource
+          : neuroPrompt && markdownSource
             ? [markdownSource, neuroPrompt].filter(Boolean).join('\n\n---\nBrief NeuroDesign:\n')
             : renderableContent;
+        if (!isUser && reasoningContent && String(reasoningContent).trim()) {
+          const r = String(reasoningContent).trim();
+          toCopy =
+            typeof toCopy === 'string' && toCopy.trim()
+              ? `Pensamento:\n${r}\n\n---\n\n${toCopy}`
+              : `Pensamento:\n${r}`;
+        }
+        if (typeof toCopy !== 'string' || !toCopy) return;
         navigator.clipboard.writeText(toCopy);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
       };
+
+      const isPdfOnlyV2 =
+        isUser &&
+        userV2Files &&
+        userV2Files.length > 0 &&
+        !userV2Text &&
+        userImageUrls.length === 0;
+
+      const sseLive =
+        !isUser &&
+        message?.content &&
+        typeof message.content === 'object' &&
+        message.content.sseStreaming === true &&
+        isStreaming;
+      const showLiveReasoningPanel =
+        !isUser &&
+        (sseLive || (reasoningContent != null && String(reasoningContent).trim().length > 0));
+      const useSseTextStream = sseLive;
 
       return (
         <motion.div 
@@ -129,7 +225,17 @@ import React, { useState, useEffect, useMemo } from 'react';
         >
           {!isUser && (
             <Avatar className="w-9 h-9 border-2 border-primary/50 flex-shrink-0">
-              <AvatarFallback className="bg-primary text-primary-foreground"><Bot size={20} /></AvatarFallback>
+              {connectionLogoUrl && !logoError ? (
+                <AvatarImage
+                  src={connectionLogoUrl}
+                  alt=""
+                  className="object-contain bg-background p-1"
+                  onError={() => setLogoError(true)}
+                />
+              ) : null}
+              <AvatarFallback className="bg-primary text-primary-foreground">
+                <Bot size={20} />
+              </AvatarFallback>
             </Avatar>
           )}
           <div
@@ -141,36 +247,41 @@ import React, { useState, useEffect, useMemo } from 'react';
             {!isUser && (
               <span className="text-xs font-medium text-muted-foreground">{aiName}</span>
             )}
-            {!isUser && reasoningContent && (
-              <div className="rounded-xl border bg-muted/40 overflow-hidden mb-2">
-                <button
-                  type="button"
-                  onClick={() => setReasoningOpen((o) => !o)}
-                  className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left hover:bg-muted/60 transition-colors"
-                >
-                  <div className="flex items-center gap-2">
-                    <Lightbulb className="h-4 w-4 text-primary shrink-0" />
-                    <span className="text-sm font-medium text-foreground">Raciocínio concluído</span>
-                  </div>
-                  {reasoningOpen ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
-                </button>
-                {reasoningOpen && (
-                  <div className="px-4 pb-3 pt-0 text-sm text-muted-foreground border-t border-border/50">
-                    <ul className="space-y-2 list-none pl-0">
-                      {reasoningContent
-                        .split(/\n+/)
-                        .filter((line) => line.trim())
-                        .map((line, i) => (
-                          <li key={i} className="flex gap-2">
-                            <span className="text-primary/70 shrink-0">•</span>
-                            <span className="flex-1" style={{ whiteSpace: 'pre-wrap' }}>{line.trim()}</span>
-                          </li>
-                        ))}
-                    </ul>
-                  </div>
-                )}
+            {isUser && userV2Files && userV2Files.length > 0 && (
+              <div className="mb-2 flex w-full max-w-[min(100%,20rem)] flex-col gap-2 items-end">
+                {userV2Files.map((f, i) => {
+                  const isImg = f.kind === 'image';
+                  const isPdf = f.kind === 'pdf';
+                  return (
+                    <div
+                      key={`${f.name}-${i}`}
+                      className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 text-left shadow-sm"
+                    >
+                      <div
+                        className={cn(
+                          'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+                          isPdf ? 'bg-red-600/15 text-red-500' : isImg ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        {isImg ? <ImageIcon className="h-5 w-5" /> : <FileText className="h-5 w-5" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{f.name || 'Ficheiro'}</p>
+                        <p className="text-xs text-muted-foreground">{formatFileSize(f.size)}</p>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
+            {showLiveReasoningPanel && (
+              <AiChatLiveReasoningPanel
+                reasoningText={reasoningContent ?? ''}
+                isLive={sseLive}
+                answerStarted={sseLive && String(renderableContent ?? '').length > 0}
+              />
+            )}
+            {!isPdfOnlyV2 && (
             <div 
               className={cn(
                 'px-3 py-2.5 rounded-xl shadow-sm prose dark:prose-invert prose-sm max-w-none break-words select-text leading-snug',
@@ -180,7 +291,25 @@ import React, { useState, useEffect, useMemo } from 'react';
               )}
               style={{ whiteSpace: 'pre-wrap' }}
             >
-              {isStreaming ? (
+              {isUser && userImageUrls.length > 0 && (
+                <div className="mb-2 flex flex-wrap justify-end gap-2 not-prose">
+                  {userImageUrls.map((url, i) => (
+                    <img
+                      key={i}
+                      src={url}
+                      alt=""
+                      className="max-h-40 max-w-[min(100%,14rem)] rounded-lg border border-white/30 object-contain"
+                    />
+                  ))}
+                </div>
+              )}
+              {isUser ? (
+                userV2Text ? (
+                  <div className="whitespace-pre-wrap break-words text-sm leading-snug not-prose">{userV2Text}</div>
+                ) : (
+                  <div className="whitespace-pre-wrap break-words text-sm leading-snug not-prose">{markdownSource}</div>
+                )
+              ) : isStreaming && !useSseTextStream ? (
                 <StreamingMessage content={renderableContent} onFinished={onStreamingFinished} />
               ) : (
                 <ReactMarkdown components={chatMarkdownComponents}>
@@ -188,6 +317,7 @@ import React, { useState, useEffect, useMemo } from 'react';
                 </ReactMarkdown>
               )}
             </div>
+            )}
             {!isUser && neuroPrompt && !isStreaming && typeof onApplyNeuroDesign === 'function' && (
               <div className="mt-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 space-y-1.5">
                 <Button
@@ -263,7 +393,12 @@ import React, { useState, useEffect, useMemo } from 'react';
       );
     };
     
-    AiChatMessage.Loading = () => (
+    AiChatMessage.Loading = ({ connectionLogoUrl = null }) => {
+      const [logoError, setLogoError] = useState(false);
+      useEffect(() => {
+        setLogoError(false);
+      }, [connectionLogoUrl]);
+      return (
       <motion.div 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -271,6 +406,14 @@ import React, { useState, useEffect, useMemo } from 'react';
         className="flex items-start gap-3"
       >
         <Avatar className="w-9 h-9 border-2 border-primary/50">
+          {connectionLogoUrl && !logoError ? (
+            <AvatarImage
+              src={connectionLogoUrl}
+              alt=""
+              className="object-contain bg-background p-1"
+              onError={() => setLogoError(true)}
+            />
+          ) : null}
           <AvatarFallback className="bg-primary text-primary-foreground"><Bot size={20} /></AvatarFallback>
         </Avatar>
         <div className="px-3 py-2.5 rounded-xl bg-input border flex items-center space-x-2">
@@ -278,6 +421,7 @@ import React, { useState, useEffect, useMemo } from 'react';
           <span className="text-sm text-muted-foreground">Pensando...</span>
         </div>
       </motion.div>
-    );
+      );
+    };
     
     export default AiChatMessage;

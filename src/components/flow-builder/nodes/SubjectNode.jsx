@@ -1,5 +1,6 @@
 import React, { memo, useCallback, useRef, useState } from 'react';
 import { Handle, Position } from 'reactflow';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -11,7 +12,7 @@ import { useNeuroDesignProject } from '@/hooks/useNeuroDesignProject';
 import { useToast } from '@/components/ui/use-toast';
 import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
 
-const SubjectNode = memo(({ data, id }) => {
+const SubjectNode = memo(({ data, id, selected }) => {
   const { onUpdateNodeData } = data;
   const subject_gender = data.subject_gender ?? '';
   const subject_description = data.subject_description ?? '';
@@ -85,9 +86,12 @@ const SubjectNode = memo(({ data, id }) => {
 
   return (
     <Card className="w-64 border-2 border-indigo-500/50 shadow-lg">
-      <CardHeader className="flex-row items-center space-x-2 p-3 bg-indigo-500/10">
-        <User className="w-5 h-5 text-indigo-500" />
-        <CardTitle className="text-base">Sujeito principal</CardTitle>
+      <CardHeader className="flex flex-row items-center gap-2 p-3 bg-indigo-500/10 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <User className="w-5 h-5 shrink-0 text-indigo-500" />
+          <CardTitle className="text-base truncate">Sujeito principal</CardTitle>
+        </div>
+        <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
       </CardHeader>
       <CardContent className="p-3 space-y-2">
         <div className="space-y-1">

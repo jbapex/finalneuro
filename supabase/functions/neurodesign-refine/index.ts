@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { enqueueUserGoogle } from "../_shared/googleUserQueue.ts";
+import { openRouterImageChatModalities } from "../_shared/openRouterImageModalities.ts";
+import { regionBoundsDescriptionEN } from "../_shared/neurodesignRegionPrompt.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -87,8 +89,9 @@ async function refineWithOpenRouter(conn: Conn, imageUrls: string[], textPrompt:
   const body: Record<string, unknown> = {
     model,
     messages: [{ role: "user" as const, content }],
-    modalities: ["image", "text"],
+    modalities: openRouterImageChatModalities(model),
     stream: false,
+    temperature: 0.35,
   };
   const aspectRatio = getAspectRatio(dimensions);
   if (aspectRatio) body.image_config = { aspect_ratio: aspectRatio };
@@ -109,25 +112,53 @@ async function refineWithOpenRouter(conn: Conn, imageUrls: string[], textPrompt:
 const ALLOWED_IMAGE_SIZES = ["1K", "2K", "4K"] as const;
 function normalizeImageSizeRefine(raw: unknown): "1K" | "2K" | "4K" {
   const s = typeof raw === "string" ? raw.trim().toUpperCase() : "";
-  return ALLOWED_IMAGE_SIZES.includes(s as "1K" | "2K" | "4K") ? (s as "1K" | "2K" | "4K") : "1K";
+  return ALLOWED_IMAGE_SIZES.includes(s as "1K" | "2K" | "4K") ? (s as "1K" | "2K" | "4K") : "4K";
 }
 
-async function refineWithGoogleGemini(conn: Conn, imageUrls: string[], textPrompt: string, dimensions: string | undefined, imageSize: "1K" | "2K" | "4K"): Promise<{ url: string } | null> {
+/** Prefixo/sufixo: modelos de imagem tendem a “re-desenhar” tudo e gerar pele cera, mãos tortas e ruído falso. */
+const REFINE_QUALITY_PREFIX =
+  "PHOTO-EDIT ONLY (not a full creative redraw): change ONLY what the user requested; keep composition, subjects, and layout stable unless explicitly asked to alter them. ";
+
+const REFINE_DETAIL_SUFFIX =
+  " Preserve each person's identity (face, age, expression) and anatomy: correct hand and finger count, natural joint angles—no melted limbs, rubber hands, or extra/missing fingers. Avoid waxy/plastic/airbrushed skin and painterly smear; keep photorealistic micro-texture (pores, fabric weave, hair strands). Keep typography and logos razor-sharp. Do not add heavy digital grain or blocky JPEG-like artifacts; do not oversmooth into muddy detail. Output at the highest fidelity this model allows.";
+
+const REFINE_REGIONAL_PREFIX =
+  "LOCAL EDIT — the selection rectangle shows WHICH object or area the user means (it is not a hard clip mask). Obey their instruction fully: scale up/down, move, rotate, recolor, relight, or replace that subject as requested. If they ask to enlarge, shrink, reposition, or re-pose the subject, you MAY paint into pixels outside the original rectangle and reconstruct nearby background naturally so the change fits. The base image may already be a prior edit: do not amplify blur, JPEG blocking, or muddy color from earlier passes. ";
+
+const REFINE_REGIONAL_SUFFIX =
+  " Keep parts of the scene that are unrelated to the requested change as close as possible to the first image (same sharpness, grain/noise, color). Do not globally restyle, posterize, airbrush, or oil-paint the entire canvas; avoid new banding or blotchy patches except where local inpainting is required for resize/move. Return one full image (same framing as the first image), not a crop.";
+
+const IMPROVE_QUALITY_PROMPT =
+  "QUALITY RESTORATION — use this image as the only reference and target. Output a photorealistic, high-fidelity version that matches the original composition, subjects, poses, framing, palette, and layout as closely as possible. Reduce JPEG blocking, color banding, muddy blotches, oversharpen halos, and heavy painterly smear. Restore believable micro-texture (skin, fabric, foliage, metal) and keep text/logos crisp. Do not add or remove objects, people, or text; do not change the scene or camera angle. ";
+
+async function refineWithGoogleGemini(
+  conn: Conn,
+  imageUrls: string[],
+  textPrompt: string,
+  dimensions: string | undefined,
+  imageSize: "1K" | "2K" | "4K",
+  opts?: { regional?: boolean; qualityRestore?: boolean },
+): Promise<{ url: string } | null> {
   const baseUrl = conn.api_url.replace(/\/$/, "");
   const model = conn.default_model || "gemini-2.5-flash-image";
   const apiUrl = `${baseUrl}/models/${model}:generateContent`;
   const results = await Promise.all(imageUrls.map(imageUrlToBase64));
   if (results.some((r) => r === null)) return null;
-  const parts: Array<{ inlineData?: { mimeType: string; data: string }; text?: string }> = results
+  const imageParts: Array<{ inlineData: { mimeType: string; data: string } }> = results
     .filter((r): r is { data: string; mimeType: string } => r !== null)
     .map((img) => ({ inlineData: { mimeType: img.mimeType, data: img.data } }));
-  parts.push({ text: textPrompt });
+  const parts: Array<{ inlineData?: { mimeType: string; data: string }; text?: string }> = opts?.regional
+    ? [{ text: textPrompt }, ...imageParts]
+    : [...imageParts, { text: textPrompt }];
   const aspectRatio = getAspectRatio(dimensions);
   const body = {
     contents: [{ parts }],
     generationConfig: {
+      temperature: opts?.qualityRestore ? 0.28 : opts?.regional ? 0.36 : 0.35,
       responseModalities: ["TEXT", "IMAGE"],
-      ...(aspectRatio && { imageConfig: { aspectRatio, imageSize } }),
+      ...(opts?.regional
+        ? { imageConfig: { imageSize } }
+        : aspectRatio && { imageConfig: { aspectRatio, imageSize } }),
     },
   };
   const res = await fetch(apiUrl, {
@@ -181,6 +212,7 @@ serve(async (req) => {
       selectionText,
       selectionFont,
       selectionFontStyle,
+      improveQuality,
     } = body as {
       projectId: string;
       runId: string;
@@ -197,14 +229,18 @@ serve(async (req) => {
       selectionText?: string;
       selectionFont?: string;
       selectionFontStyle?: string;
+      improveQuality?: boolean;
     };
 
     const instructionTrimmed = (instruction ?? "").trim();
     const selectionTextTrimmed = (selectionText ?? "").trim();
     const dimensionsOverride = (configOverrides?.dimensions as string)?.trim();
-    const hasSelectionAction = region && regionCropImageUrl && selectionAction;
+    const improveQualityMode = improveQuality === true;
+    const hasRegionSelection = !!(region && selectionAction);
+    const isRegionalEdit = hasRegionSelection && !improveQualityMode;
     const hasAnyAction =
-      hasSelectionAction ||
+      improveQualityMode ||
+      hasRegionSelection ||
       instructionTrimmed ||
       referenceImageUrl ||
       replacementImageUrl ||
@@ -215,7 +251,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ error: "projectId, runId e imageId são obrigatórios" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
     if (!hasAnyAction) {
-      return new Response(JSON.stringify({ error: "Envie ao menos uma ação: instrução, referência de arte, imagem para substituir, imagem para adicionar na cena ou região selecionada" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ error: "Envie ao menos uma ação: melhorar qualidade, instrução, referência de arte, imagem para substituir, imagem para adicionar na cena ou região selecionada" }), { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     const { data: project, error: projectError } = await supabase.from("neurodesign_projects").select("id, owner_user_id").eq("id", projectId).single();
@@ -246,9 +282,12 @@ serve(async (req) => {
       status: "running",
       provider: providerLabel,
       parent_run_id: runId,
-      refine_instruction: instructionTrimmed,
+      refine_instruction: improveQualityMode
+        ? `Melhorar qualidade${instructionTrimmed ? `: ${instructionTrimmed}` : ""}`
+        : instructionTrimmed,
       provider_request_json: {
         instruction: instructionTrimmed,
+        improveQuality: improveQualityMode,
         configOverrides,
         referenceImageUrl: referenceImageUrl ?? null,
         replacementImageUrl: replacementImageUrl ?? null,
@@ -272,62 +311,120 @@ serve(async (req) => {
     const imageUrls: string[] = [sourceImageUrl];
     let textPrompt: string;
 
-    if (region && regionCropImageUrl && selectionAction) {
-      switch (selectionAction) {
-        case "add_text": {
-          imageUrls.push(regionCropImageUrl);
-          const fontName = (selectionFont ?? "").trim();
-          const fontStyleRaw = (selectionFontStyle ?? "").trim().toLowerCase();
-          const fontStyleMap: Record<string, string> = {
-            elegante: "elegant",
-            moderno: "modern",
-            negrito: "bold",
-            script: "script or cursive",
-            minimalista: "minimalist",
-            retro: "retro/vintage",
-            corporate: "corporate/professional",
-          };
-          const fontStyleEn = fontStyleRaw && fontStyleMap[fontStyleRaw] ? fontStyleMap[fontStyleRaw] : "";
-          let typographyHint = "";
-          if (fontName) typographyHint += ` Use the font named "${fontName}" or a very similar one.`;
-          if (fontStyleEn) typographyHint += ` The typography should be ${fontStyleEn} style.`;
-          if (selectionTextTrimmed) {
-            textPrompt = `In the first image, add the following text inside or at the selected region (the second image shows the exact area). Text to add: "${selectionTextTrimmed}". Make the text look integrated and professional with the scene.${typographyHint} Do not change the rest of the image.`;
-          } else {
-            textPrompt = instructionTrimmed
-              ? `Apply this change only to the selected region (second image) of the first image. Keep the rest unchanged. ${instructionTrimmed}`
-              : "Apply minimal adjustments to the selected region only. Keep the rest of the image unchanged.";
+    if (improveQualityMode) {
+      textPrompt = `${IMPROVE_QUALITY_PROMPT}${instructionTrimmed ? ` Extra notes: ${instructionTrimmed}` : ""}`.trim();
+    } else if (region && selectionAction) {
+      const useCrop = !!regionCropImageUrl;
+      if (useCrop) {
+        switch (selectionAction) {
+          case "add_text": {
+            imageUrls.push(regionCropImageUrl);
+            const fontName = (selectionFont ?? "").trim();
+            const fontStyleRaw = (selectionFontStyle ?? "").trim().toLowerCase();
+            const fontStyleMap: Record<string, string> = {
+              elegante: "elegant",
+              moderno: "modern",
+              negrito: "bold",
+              script: "script or cursive",
+              minimalista: "minimalist",
+              retro: "retro/vintage",
+              corporate: "corporate/professional",
+            };
+            const fontStyleEn = fontStyleRaw && fontStyleMap[fontStyleRaw] ? fontStyleMap[fontStyleRaw] : "";
+            let typographyHint = "";
+            if (fontName) typographyHint += ` Use the font named "${fontName}" or a very similar one.`;
+            if (fontStyleEn) typographyHint += ` The typography should be ${fontStyleEn} style.`;
+            if (selectionTextTrimmed) {
+              textPrompt = `In the first image, add the following text inside or at the selected region (the second image shows the exact area). Text to add: "${selectionTextTrimmed}". Render the lettering crisp and clean (sharp edges, no unnecessary glow/halos); match scene lighting.${typographyHint} Leave every pixel outside the text glyphs and their immediate blend unchanged—no global soften, no re-filter of sky/grass/background, no new grain or banding on the full canvas.`;
+            } else {
+              textPrompt = instructionTrimmed
+                ? `Apply this change only to the selected region (second image) of the first image. Keep the rest unchanged. ${instructionTrimmed}`
+                : "Apply minimal adjustments to the selected region only. Keep the rest of the image unchanged.";
+            }
+            break;
           }
-          break;
-        }
-        case "remove_text":
-          imageUrls.push(regionCropImageUrl);
-          textPrompt = "In the first image, remove only the text or text-like content that appears in the selected region (shown in the second image). Leave the rest of the image completely unchanged. Fill or blend the area where text was removed so it looks natural.";
-          break;
-        case "remove_content":
-          imageUrls.push(regionCropImageUrl);
-          textPrompt = "In the first image, remove all content inside the selected region (shown in the second image). Fill that area naturally so it blends with the surrounding background. Do not change anything outside the selected region.";
-          break;
-        case "replace":
-          if (replacementImageUrl) {
-            imageUrls.push(regionCropImageUrl, replacementImageUrl);
-            textPrompt = instructionTrimmed
-              ? `In the first image, replace the region that corresponds to the content shown in the second image (the selected crop) with the content of the third image. Keep the rest of the first image unchanged. ${instructionTrimmed}`
-              : "In the first image, replace the region that corresponds to the content shown in the second image (the selected crop) with the content of the third image. Keep the rest of the first image unchanged.";
-          } else {
+          case "remove_text":
+            imageUrls.push(regionCropImageUrl);
+            textPrompt = "In the first image, remove only the text or text-like content that appears in the selected region (shown in the second image). Leave the rest of the image completely unchanged. Fill or blend the area where text was removed so it looks natural.";
+            break;
+          case "remove_content":
+            imageUrls.push(regionCropImageUrl);
+            textPrompt = "In the first image, remove all content inside the selected region (shown in the second image). Fill that area naturally so it blends with the surrounding background. Do not change anything outside the selected region.";
+            break;
+          case "replace":
+            if (replacementImageUrl) {
+              imageUrls.push(regionCropImageUrl, replacementImageUrl);
+              textPrompt = instructionTrimmed
+                ? `In the first image, replace the region that corresponds to the content shown in the second image (the selected crop) with the content of the third image. Keep the rest of the first image unchanged. ${instructionTrimmed}`
+                : "In the first image, replace the region that corresponds to the content shown in the second image (the selected crop) with the content of the third image. Keep the rest of the first image unchanged.";
+            } else {
+              imageUrls.push(regionCropImageUrl);
+              textPrompt = instructionTrimmed
+                ? `The second image shows which part of the first image to change. ${instructionTrimmed} If this requires resizing or moving the subject, you may extend outside the crop and inpaint nearby background as needed.`
+                : "Apply minimal adjustments to the selected region only. Keep unrelated areas close to the first image.";
+            }
+            break;
+          case "free":
+          default:
             imageUrls.push(regionCropImageUrl);
             textPrompt = instructionTrimmed
-              ? `Apply this change only to the selected region (second image) of the first image. ${instructionTrimmed}`
-              : "Apply minimal adjustments to the selected region only. Keep the rest of the image unchanged.";
+              ? `USER REQUEST (follow this exactly): "${instructionTrimmed}"\n\nThe second image is a crop highlighting the subject or area to change on the first image (not a strict mask). Execute the request fully—for example if they ask to make the subject bigger, smaller, or move it, you may use pixels outside the original box and rebuild occluded background. Keep distant unrelated scene areas matching the first image.`
+              : "Apply minimal, localized adjustments around the area shown in the second image; keep the rest of the scene close to the first image.";
+            break;
+        }
+      } else {
+        const coords = regionBoundsDescriptionEN(region);
+        switch (selectionAction) {
+          case "add_text": {
+            const fontName = (selectionFont ?? "").trim();
+            const fontStyleRaw = (selectionFontStyle ?? "").trim().toLowerCase();
+            const fontStyleMap: Record<string, string> = {
+              elegante: "elegant",
+              moderno: "modern",
+              negrito: "bold",
+              script: "script or cursive",
+              minimalista: "minimalist",
+              retro: "retro/vintage",
+              corporate: "corporate/professional",
+            };
+            const fontStyleEn = fontStyleRaw && fontStyleMap[fontStyleRaw] ? fontStyleMap[fontStyleRaw] : "";
+            let typographyHint = "";
+            if (fontName) typographyHint += ` Use the font named "${fontName}" or a very similar one.`;
+            if (fontStyleEn) typographyHint += ` The typography should be ${fontStyleEn} style.`;
+            if (selectionTextTrimmed) {
+              textPrompt = `In the first image, add the following text only inside ${coords}. Text: "${selectionTextTrimmed}".${typographyHint} Crisp typography; no halos unless the scene already has haze. Do not re-filter or soften the full image—only add the text and minimal local blending inside the rectangle.`;
+            } else {
+              textPrompt = instructionTrimmed
+                ? `In the first image, apply only inside ${coords}. ${instructionTrimmed} Do not change outside this area.`
+                : `Add minimal text or adjustments only inside ${coords}; keep the rest of the image unchanged.`;
+            }
+            break;
           }
-          break;
-        case "free":
-        default:
-          imageUrls.push(regionCropImageUrl);
-          textPrompt = instructionTrimmed
-            ? `In the first image, apply the following change only to the selected region (shown in the second image). Leave the rest of the image unchanged. Instruction: ${instructionTrimmed}`
-            : "Apply minimal adjustments to the selected region only. Keep the rest of the image unchanged.";
-          break;
+          case "remove_text":
+            textPrompt = `In the first image, remove only text or text-like content within ${coords}. Leave all pixels outside this rectangle unchanged. Inpaint naturally where text was removed.`;
+            break;
+          case "remove_content":
+            textPrompt = `In the first image, remove and naturally inpaint only the content within ${coords}. Do not alter anything outside this rectangle.`;
+            break;
+          case "replace":
+            if (replacementImageUrl) {
+              imageUrls.push(replacementImageUrl);
+              textPrompt = instructionTrimmed
+                ? `In the first image, replace the content within ${coords} with the subject/content of the second image, blended seamlessly. Keep the rest of the first image unchanged. ${instructionTrimmed}`
+                : `In the first image, replace the content within ${coords} with the second image, blended seamlessly. Keep the rest unchanged.`;
+            } else {
+              textPrompt = instructionTrimmed
+                ? `In the first image, the rectangle ${coords} indicates the subject or area to change. ${instructionTrimmed} You may extend outside that rectangle if the request requires resize, move, or similar.`
+                : `Apply minimal adjustments around ${coords}; keep unrelated areas close to the first image.`;
+            }
+            break;
+          case "free":
+          default:
+            textPrompt = instructionTrimmed
+              ? `USER REQUEST (follow this exactly): "${instructionTrimmed}"\n\nThe rectangle ${coords} marks which object or region to edit—not a hard boundary. If they ask to enlarge, shrink, move, or rotate that subject, do so fully even if it overlaps pixels outside the box; inpaint adjacent background naturally. Preserve unrelated parts of the frame.`
+              : `Make minimal localized adjustments near ${coords}; keep the rest of the image close to the source.`;
+            break;
+        }
       }
     } else if (referenceImageUrl && !replacementImageUrl) {
       imageUrls.push(referenceImageUrl);
@@ -352,12 +449,20 @@ serve(async (req) => {
         : "Apply minimal adjustments to the image.";
     }
 
-    if (addImageUrl) {
+    if (addImageUrl && !improveQualityMode) {
       imageUrls.push(addImageUrl);
       const addPart = instructionTrimmed
         ? ` The last image is an element to add into the first image's scene. Integrate it naturally. User instruction: ${instructionTrimmed}`
         : " The last image is an element to add into the first image's scene. Integrate it naturally.";
       textPrompt = (textPrompt + addPart).trim();
+    }
+
+    if (improveQualityMode) {
+      textPrompt = `${textPrompt.trim()} ${REFINE_DETAIL_SUFFIX}`;
+    } else {
+      textPrompt = isRegionalEdit
+        ? `${REFINE_REGIONAL_PREFIX}${textPrompt.trim()} ${REFINE_REGIONAL_SUFFIX}`
+        : `${REFINE_QUALITY_PREFIX}${textPrompt.trim()} ${REFINE_DETAIL_SUFFIX}`;
     }
 
     const dimensionsForApi = (dimensionsOverride || (configOverrides?.dimensions as string) || "").trim() || "1:1";
@@ -366,12 +471,12 @@ serve(async (req) => {
     const hasDimensionOverride = aspectRatioForPrompt && aspectRatioForPrompt !== "1:1";
     const hasOtherAction = !!(
       instructionTrimmed ||
-      (region && regionCropImageUrl && selectionAction) ||
+      (region && selectionAction) ||
       referenceImageUrl ||
       replacementImageUrl ||
       addImageUrl
     );
-    if (hasDimensionOverride) {
+    if (hasDimensionOverride && !isRegionalEdit && !improveQualityMode) {
       const aspectRatioInstruction = `Recreate this image in exactly ${aspectRatioForPrompt} aspect ratio. Fill the entire frame with the same scene, style and subjects; extend or recompose the composition so the new frame is fully filled with content. Do not add black bars, letterboxing, or empty borders. Output a single coherent image in the requested aspect ratio.`;
       if (!hasOtherAction) {
         textPrompt = aspectRatioInstruction + (instructionTrimmed ? ` Also apply: ${instructionTrimmed}` : "");
@@ -420,7 +525,10 @@ serve(async (req) => {
             }
           } else if (apiUrl.includes("generativelanguage") || conn.provider?.toLowerCase() === "google") {
             const result = await enqueueUserGoogle(user.id, () =>
-              refineWithGoogleGemini(conn as Conn, resolvedImageUrls, textPrompt, dimensionsForApi, imageSizeForApi)
+              refineWithGoogleGemini(conn as Conn, resolvedImageUrls, textPrompt, dimensionsForApi, imageSizeForApi, {
+                regional: isRegionalEdit,
+                qualityRestore: improveQualityMode,
+              })
             );
             if (result) {
               refinedUrl = result.url;

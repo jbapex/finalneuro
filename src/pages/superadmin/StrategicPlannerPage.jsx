@@ -24,11 +24,11 @@ const StrategicPlannerPage = () => {
   const { user, profile } = useAuth();
   const { toast } = useToast();
   const [clients, setClients] = useState([]);
-  const [campaigns, setCampaigns] = useState([]);
-  const [filteredCampaigns, setFilteredCampaigns] = useState([]);
-  
+  const [clientContexts, setClientContexts] = useState([]);
+
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  /** id do registo client_contexts ou '' (contexto geral / sem bloco textual) */
+  const [selectedClientContextId, setSelectedClientContextId] = useState('');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
 
@@ -44,20 +44,35 @@ const StrategicPlannerPage = () => {
   const fetchInitialData = useCallback(async () => {
     if (!user) return;
     let clientsQuery = supabase.from('clients').select('id, name');
-    let campaignsQuery = supabase.from('campaigns').select('id, name, client_id, objective');
     if (!isSuperAdmin) {
       clientsQuery = clientsQuery.eq('user_id', user.id);
-      campaignsQuery = campaignsQuery.eq('user_id', user.id);
     }
-    const [clientsRes, campaignsRes] = await Promise.all([clientsQuery, campaignsQuery]);
+    const clientsRes = await clientsQuery;
     if (clientsRes.error) toast({ title: 'Erro ao carregar clientes', variant: 'destructive' });
     else setClients(clientsRes.data || []);
-    if (campaignsRes.error) toast({ title: 'Erro ao carregar campanhas', variant: 'destructive' });
-    else {
-        setCampaigns(campaignsRes.data || []);
-        setFilteredCampaigns(campaignsRes.data || []);
-    }
   }, [user, toast, isSuperAdmin]);
+
+  const fetchContextsForClient = useCallback(
+    async (clientId) => {
+      if (!clientId) {
+        setClientContexts([]);
+        return;
+      }
+      const cid = parseInt(clientId, 10);
+      const { data, error } = await supabase
+        .from('client_contexts')
+        .select('id, name, content')
+        .eq('client_id', cid)
+        .order('name', { ascending: true });
+      if (error) {
+        toast({ title: 'Erro ao carregar contextos do cliente', description: error.message, variant: 'destructive' });
+        setClientContexts([]);
+      } else {
+        setClientContexts(data || []);
+      }
+    },
+    [toast]
+  );
 
   useEffect(() => {
     fetchInitialData();
@@ -71,36 +86,49 @@ const StrategicPlannerPage = () => {
 
   const handleClientChange = (clientId) => {
     setSelectedClientId(clientId);
-    setSelectedCampaignId('');
+    setSelectedClientContextId('');
     if (clientId) {
-      setFilteredCampaigns(campaigns.filter(c => c.client_id === parseInt(clientId)));
+      void fetchContextsForClient(clientId);
     } else {
-      setFilteredCampaigns(campaigns);
+      setClientContexts([]);
     }
     resetState();
     setView('selector');
   };
 
-  const handleCampaignChange = (campaignId) => {
-    setSelectedCampaignId(campaignId);
+  const handleClientContextChange = (contextId) => {
+    setSelectedClientContextId(contextId);
     resetState();
     setView('selector');
   };
 
+  const mustPickContext = clientContexts.length > 0;
+  const contextSelectionOk = !mustPickContext || !!selectedClientContextId;
+
   const handleLoadHistory = async () => {
-    if (!selectedCampaignId || !selectedClientId) {
-      toast({ title: 'Seleção necessária', description: 'Por favor, escolha um cliente e uma campanha.', variant: 'destructive' });
+    if (!selectedClientId) {
+      toast({ title: 'Seleção necessária', description: 'Escolha um cliente.', variant: 'destructive' });
+      return;
+    }
+    if (mustPickContext && !selectedClientContextId) {
+      toast({ title: 'Seleção necessária', description: 'Escolha um contexto do cliente.', variant: 'destructive' });
       return;
     }
     setIsLoading(true);
-    const { data, error } = await supabase
+    const ctxId = selectedClientContextId ? parseInt(selectedClientContextId, 10) : null;
+    let query = supabase
       .from('plannings')
       .select('*')
       .eq('client_id', selectedClientId)
-      .eq('campaign_id', selectedCampaignId)
       .eq('month', selectedMonth)
       .eq('year', selectedYear)
       .order('version', { ascending: false });
+    if (ctxId) {
+      query = query.eq('client_context_id', ctxId);
+    } else {
+      query = query.is('client_context_id', null);
+    }
+    const { data, error } = await query;
 
     if (error) {
       toast({ title: 'Erro ao buscar histórico', description: error.message, variant: 'destructive' });
@@ -112,15 +140,25 @@ const StrategicPlannerPage = () => {
   };
   
   const handleCreateNewPlanning = async () => {
+    if (!selectedClientId) {
+      toast({ title: 'Seleção necessária', description: 'Escolha um cliente.', variant: 'destructive' });
+      return;
+    }
+    if (mustPickContext && !selectedClientContextId) {
+      toast({ title: 'Seleção necessária', description: 'Escolha um contexto do cliente.', variant: 'destructive' });
+      return;
+    }
     setIsLoading(true);
     const latestVersion = planningHistory.length > 0 ? Math.max(...planningHistory.map(p => p.version)) : 0;
     
+    const ctxId = selectedClientContextId ? parseInt(selectedClientContextId, 10) : null;
     const { data: newPlanning, error } = await supabase
       .from('plannings')
       .insert({
         user_id: user.id,
         client_id: selectedClientId,
-        campaign_id: selectedCampaignId,
+        campaign_id: null,
+        client_context_id: ctxId,
         month: selectedMonth,
         year: selectedYear,
         version: latestVersion + 1,
@@ -142,6 +180,11 @@ const StrategicPlannerPage = () => {
 
   const handleContinuePlanning = async (planning) => {
     setCurrentPlanning(planning);
+    if (planning.client_context_id != null) {
+      setSelectedClientContextId(String(planning.client_context_id));
+    } else {
+      setSelectedClientContextId('');
+    }
     await fetchPlanningSteps(planning.id);
     setView('planner');
   };
@@ -179,14 +222,26 @@ const StrategicPlannerPage = () => {
 
     try {
         const clientName = clients.find(c => c.id === parseInt(selectedClientId))?.name || 'Cliente';
-        const campaignName = campaigns.find(c => c.id === parseInt(selectedCampaignId))?.name || 'Campanha';
-        
-        const blob = await pdf(<PdfDocument planningData={{planningSteps: finalSteps, clientName, campaignName, month: selectedMonth, year: selectedYear}} />).toBlob();
+        const ctxRow = clientContexts.find((c) => String(c.id) === String(selectedClientContextId));
+        const scopeLabel = ctxRow?.name?.trim() || 'Contexto geral';
+
+        const blob = await pdf(
+          <PdfDocument
+            planningData={{
+              planningSteps: finalSteps,
+              clientName,
+              scopeLabel,
+              month: selectedMonth,
+              year: selectedYear,
+            }}
+          />
+        ).toBlob();
 
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = `Planejamento_v${planningToExport.version}_${campaignName}_${selectedMonth}-${selectedYear}.pdf`;
+        const safeScope = scopeLabel.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
+        link.download = `Planejamento_v${planningToExport.version}_${safeScope}_${selectedMonth}-${selectedYear}.pdf`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -209,14 +264,14 @@ const StrategicPlannerPage = () => {
           Planejamento Estratégico com IA
         </h1>
         <p className="text-sm md:text-base text-muted-foreground">
-          Gere, versione e refine planos de campanha mensais de forma inteligente.
+          Gere, versione e refine planos mensais com base no contexto do cliente (ficha e blocos de contexto).
         </p>
       </motion.div>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-center md:text-left">Configuração do Planejamento</CardTitle>
-          <CardDescription className="text-center md:text-left">Selecione o cliente, a campanha e o período para começar.</CardDescription>
+          <CardDescription className="text-center md:text-left">Selecione o cliente, o contexto (quando existir) e o período para começar.</CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
           <div className="space-y-1">
@@ -224,14 +279,32 @@ const StrategicPlannerPage = () => {
             <Select onValueChange={handleClientChange} value={selectedClientId || ''}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{clients.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent></Select>
           </div>
           <div className="space-y-1">
-            <label className="text-sm font-medium">Campanha</label>
-            <Select onValueChange={handleCampaignChange} value={selectedCampaignId || ''} disabled={!selectedClientId}><SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger><SelectContent>{filteredCampaigns.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>)}</SelectContent></Select>
+            <label className="text-sm font-medium">Contexto do cliente</label>
+            <Select
+              onValueChange={handleClientContextChange}
+              value={selectedClientContextId || ''}
+              disabled={!selectedClientId || clientContexts.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder={clientContexts.length === 0 ? 'Nenhum contexto cadastrado' : 'Selecione...'} />
+              </SelectTrigger>
+              <SelectContent>
+                {clientContexts.map((ctx) => (
+                  <SelectItem key={ctx.id} value={String(ctx.id)}>
+                    {ctx.name?.trim() || `Contexto #${ctx.id}`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedClientId && clientContexts.length === 0 && (
+              <p className="text-xs text-muted-foreground">Cadastre blocos de contexto na ficha do cliente para filtrar o planejamento.</p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1"><label className="text-sm font-medium">Mês</label><Select onValueChange={(v) => setSelectedMonth(parseInt(v))} value={String(selectedMonth)}><SelectTrigger><SelectValue placeholder="Mês" /></SelectTrigger><SelectContent>{months.map(m => <SelectItem key={m.value} value={String(m.value)}>{m.name}</SelectItem>)}</SelectContent></Select></div>
             <div className="space-y-1"><label className="text-sm font-medium">Ano</label><Select onValueChange={(v) => setSelectedYear(parseInt(v))} value={String(selectedYear)}><SelectTrigger><SelectValue placeholder="Ano" /></SelectTrigger><SelectContent>{years.map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}</SelectContent></Select></div>
           </div>
-          <Button onClick={handleLoadHistory} disabled={!selectedCampaignId || isLoading} className="w-full lg:w-auto">
+          <Button onClick={handleLoadHistory} disabled={!selectedClientId || !contextSelectionOk || isLoading} className="w-full lg:w-auto">
             {isLoading ? <Loader2 className="animate-spin mr-2" /> : <History className="mr-2 h-4 w-4" />}
             Carregar Histórico
           </Button>
@@ -281,9 +354,9 @@ const StrategicPlannerPage = () => {
           </div>
           {planningStepsConfig.map((config, index) => {
               const isEnabled = index === 0 || !!planningSteps[planningStepsConfig[index - 1].id]?.is_approved;
-              const campaignDataForStep = campaigns.find(c => c.id === parseInt(selectedCampaignId));
-              const clientDataForStep = clients.find(c => c.id === parseInt(selectedClientId));
-              
+              const clientDataForStep = clients.find((c) => c.id === parseInt(selectedClientId, 10));
+              const ctxRow = clientContexts.find((c) => String(c.id) === String(selectedClientContextId));
+
               return (
                 <StepCard
                   key={config.id}
@@ -296,9 +369,13 @@ const StrategicPlannerPage = () => {
                   isEnabled={isEnabled}
                   context={{
                     clientId: selectedClientId,
-                    campaignId: selectedCampaignId,
-                    campaignData: campaignDataForStep,
                     clientData: clientDataForStep,
+                    campaignId: null,
+                    campaignData: null,
+                    clientContextId: selectedClientContextId || null,
+                    clientContextData: ctxRow
+                      ? { name: ctxRow.name, content: ctxRow.content }
+                      : null,
                     month: selectedMonth,
                     year: selectedYear,
                     previousSteps: planningSteps,

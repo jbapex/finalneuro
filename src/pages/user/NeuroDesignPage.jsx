@@ -16,11 +16,17 @@ import BuilderPanel from '@/components/neurodesign/BuilderPanel';
 import PreviewPanel from '@/components/neurodesign/PreviewPanel';
 import MasonryGallery from '@/components/neurodesign/MasonryGallery';
 import NeuroDesignErrorBoundary from '@/components/neurodesign/NeuroDesignErrorBoundary';
+import NeuroDesignExpertsPanel from '@/components/neurodesign/NeuroDesignExpertsPanel';
 import { getDefaultAiConnection } from '@/lib/userAiDefaults';
 import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
+import { mergeNeuroDesignDefaults } from '@/lib/neurodesign/defaultConfig';
+import {
+  NEURODESIGN_FILL_FROM_BRIEF_SYSTEM_PROMPT,
+  clipAdditionalPromptFromFill,
+} from '@/lib/neurodesign/fillFromBriefPrompt';
 import { useNeurodesignExpiredCleanup } from '@/hooks/useNeurodesignExpiredCleanup';
 
-import { getFriendlyErrorMessage } from '@/lib/utils';
+import { getFriendlyErrorMessage, cn } from '@/lib/utils';
 import { NEURODESIGN_CHAT_FILL_STORAGE_KEY } from '@/lib/neurodesign/chatBridge';
 
 const NeuroDesignPage = () => {
@@ -179,13 +185,14 @@ const NeuroDesignPage = () => {
     if (!imageConnections.length) return;
     const preferred = getDefaultAiConnection(user?.id, 'image');
     setCurrentConfig((prev) => {
-      const current = prev?.user_ai_connection_id;
+      const merged = mergeNeuroDesignDefaults(prev);
+      const current = merged.user_ai_connection_id;
       if (current && current !== 'none' && imageConnections.some((c) => String(c.id) === String(current))) {
-        return prev;
+        return merged;
       }
       const fallback = imageConnections.find((c) => String(c.id) === String(preferred)) || imageConnections[0];
-      if (!fallback?.id) return prev;
-      return { ...(prev || {}), user_ai_connection_id: fallback.id };
+      if (!fallback?.id) return merged;
+      return { ...merged, user_ai_connection_id: fallback.id };
     });
   }, [selectedProject, imageConnections, user?.id]);
 
@@ -508,6 +515,7 @@ const NeuroDesignPage = () => {
     const selectionText = typeof payload === 'object' && payload !== null ? payload.selectionText : undefined;
     const selectionFont = typeof payload === 'object' && payload !== null ? payload.selectionFont : undefined;
     const selectionFontStyle = typeof payload === 'object' && payload !== null ? payload.selectionFontStyle : undefined;
+    const improveQuality = typeof payload === 'object' && payload !== null && payload.improveQuality === true;
 
     refiningRef.current = true;
     setIsRefining(true);
@@ -529,6 +537,7 @@ const NeuroDesignPage = () => {
       if (selectionText) body.selectionText = selectionText;
       if (selectionFont) body.selectionFont = selectionFont;
       if (selectionFontStyle) body.selectionFontStyle = selectionFontStyle;
+      if (improveQuality) body.improveQuality = true;
 
       const refineConn = imageConnections.find((c) => String(c.id) === String(effectiveRefineUserAiConnectionId));
       const isGoogleRefine = refineConn?.provider?.toLowerCase() === 'google';
@@ -668,67 +677,46 @@ const NeuroDesignPage = () => {
       toast({ title: 'Nenhuma conexão de IA ativa', description: 'Configure uma conexão de modelo de linguagem em Minha IA.', variant: 'destructive' });
       return;
     }
-    const systemPrompt = `Você é um assistente que extrai dados estruturados de briefs/prompts criativos para preencher um formulário de geração de imagem (NeuroDesign).
-Responda APENAS com um único objeto JSON válido. Sem markdown, sem \`\`\`json, sem texto antes ou depois do objeto.
-Preencha todos os campos que conseguir inferir do brief; para o que não for mencionado, omita a chave.
-Mapeamento de termos comuns:
-- Formato: "feed" ou "quadrado" -> dimensions "1:1"; "stories" ou "vertical" -> "9:16"; "horizontal" ou "banner" -> "16:9"; "4:5" ou "retrato feed" -> "4:5"
-- Plano: "close" ou "rosto" -> shot_type "close-up"; "médio" ou "busto" -> "medio busto"; "americano" ou "corpo inteiro" -> "americano"
-- Qualidade: "alta" ou "2k" ou "alta resolução" -> image_size "2K"; "máxima" ou "4k" -> "4K"; caso contrário use "1K"
-ESTÉTICA PROFISSIONAL (brief de social/ads, agência, posicionamento, "não parecer IA"):
-- Defina ultra_realistic: true e sobriety entre 75 e 95 (mais profissional, menos "arte genérica").
-- Se o brief mencionar retrato com fundo desfocado, evento ou palco: blur_enabled: true.
-- Em additional_prompt coloque APENAS complementos técnicos (luz, textura, composição, o que evitar). O sistema irá anexar automaticamente o texto integral colado pelo usuário antes da geração — não precisa copiar o brief inteiro nesse campo.
-Chaves e valores (use exatamente assim no JSON quando preencher):
-- subject_enabled: true ou false (há figura humana na arte?)
-- subject_mode: "person" (pessoa/retrato) ou "product" (produto/objeto sem pessoa)
-- subject_gender: "masculino" ou "feminino"
-- subject_description: string (pose, roupa, expressão)
-- quantity: número de 1 a 5 (quantidade de pessoas na imagem)
-- niche_project: string (nicho do negócio/projeto)
-- environment: string (cenário, ambiente, local)
-- use_scenario_photos: true ou false (usar fotos de cenário como referência)
-- shot_type: "close-up" ou "medio busto" ou "americano"
-- layout_position: "esquerda" ou "centro" ou "direita"
-- dimensions: "1:1" ou "4:5" ou "9:16" ou "16:9"
-- image_size: "1K" ou "2K" ou "4K"
-- text_enabled: true ou false. Se true: headline_h1, subheadline_h2, cta_button_text (strings). Para texto corrido/parágrafo use text_mode "free" e custom_text.
-- text_mode: "structured" ou "free". Use "free" quando o brief pedir texto corrido, parágrafo ou bloco na imagem (ex.: card, post); use "structured" para título, subtítulo e botão (headline, subheadline, CTA).
-- custom_text: string; quando text_mode for "free", o texto completo a aparecer na imagem.
-- custom_text_font_description: string opcional; descrição da fonte (ex.: "sans serifa, negrito", "moderna").
-- use_reference_image_text: boolean; true se o brief indicar que o texto deve ser copiado/extraído da imagem de referência.
-- text_position: "esquerda" ou "centro" ou "direita"
-- headline_zone, subheadline_zone, cta_zone: posição do texto no quadro. Valores: "top-left", "top-center", "top-right", "center-left", "center", "center-right", "bottom-left", "bottom-center", "bottom-right"
-- headline_position, subheadline_position, cta_position: fallback legado "esquerda", "centro" ou "direita" (use se não houver zona ou o brief pedir alinhamento simples)
-- headline_font, subheadline_font, cta_font: "sans", "serif", "bold", "modern" ou "" (sistema decide)
-- headline_color, subheadline_color, cta_color: cor do texto em hex, ex: "#ffffff"
-- headline_shape_enabled, subheadline_shape_enabled, cta_shape_enabled: true ou false (faixa/banner atrás do texto)
-- headline_shape_style, subheadline_shape_style, cta_shape_style: "rounded_rectangle", "banner" ou "pill"
-- headline_shape_color, subheadline_shape_color, cta_shape_color: cor da faixa em hex, ex: "#dc2626"
-- text_font, text_color, text_shape_enabled, text_shape_style, text_shape_color: mesmos valores acima (fallback global)
-- text_gradient: true ou false
-- visual_attributes: objeto com style_tags (array: clássico, formal, elegante, institucional, tecnológico, minimalista, criativo), sobriety (0-100), ultra_realistic, blur_enabled, lateral_gradient_enabled (boolean)
-- additional_prompt: string (instruções extras)
-- ambient_color, rim_light_color, fill_light_color: string hex #RRGGBB
-- floating_elements_enabled: boolean, floating_elements_text: string
-Responda somente com o JSON.`;
-
     setIsFillingFromPrompt(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generic-ai-chat', {
+      const { data, error: fnError } = await supabase.functions.invoke('generic-ai-chat', {
         body: JSON.stringify({
           session_id: null,
           messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: `Preencha os campos do NeuroDesign com base no seguinte brief/prompt:\n\n${trimmed}` },
+            { role: 'system', content: NEURODESIGN_FILL_FROM_BRIEF_SYSTEM_PROMPT },
+            { role: 'user', content: `Preencha os campos do Neuro Designer com base no seguinte brief. Distribua tudo pelos campos do JSON; em "additional_prompt" só notas técnicas curtas ou omita.\n\n--- BRIEF ---\n${trimmed}` },
           ],
           llm_integration_id: connId,
           is_user_connection: true,
           context: 'neurodesign_fill',
         }),
       });
-      if (error) throw new Error(error.message || error);
-      if (data?.error) throw new Error(data.error);
+      if (fnError) {
+        let msg = fnError.message || String(fnError);
+        if (fnError.context?.json) {
+          try {
+            const body = await fnError.context.json();
+            if (body && typeof body.error === 'string' && body.error.trim()) {
+              msg = body.error.trim();
+              if (typeof body.details === 'string' && body.details.trim()) {
+                msg += ` — ${body.details.trim().slice(0, 400)}`;
+              }
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (/502|Bad Gateway|non-2xx/i.test(msg)) {
+          msg +=
+            ' Se for timeout do servidor, peça para aumentar o timeout do gateway (Kong/nginx) nas funções ou tente um brief mais curto.';
+        }
+        throw new Error(msg);
+      }
+      if (data?.error) {
+        const d = String(data.error);
+        const det = typeof data.details === 'string' ? data.details.slice(0, 400) : '';
+        throw new Error(det ? `${d} — ${det}` : d);
+      }
       const raw = data?.response || data?.content || '';
       const parsed = parseNeuroDesignFillResponse(raw);
       if (!parsed || typeof parsed !== 'object') throw new Error('Resposta da IA não contém JSON válido.');
@@ -775,30 +763,33 @@ Responda somente com o JSON.`;
           if (typeof value.blur_enabled === 'boolean') next.blur_enabled = value.blur_enabled;
           if (typeof value.lateral_gradient_enabled === 'boolean') next.lateral_gradient_enabled = value.lateral_gradient_enabled;
           sanitized[key] = next;
+        } else if (key === 'additional_prompt' && (typeof value === 'string' || typeof value === 'number')) {
+          sanitized[key] = clipAdditionalPromptFromFill(value);
         } else if (typeof value === 'string' || typeof value === 'number') {
           sanitized[key] = value;
         }
       }
       setCurrentConfig((prev) => {
-        const base = prev || {};
+        const base = mergeNeuroDesignDefaults(prev);
         const merged = { ...base };
         for (const key of Object.keys(sanitized)) {
+          if (key === 'additional_prompt') continue;
           if (key === 'visual_attributes') merged.visual_attributes = { ...(base.visual_attributes || {}), ...sanitized.visual_attributes };
           else merged[key] = sanitized[key];
         }
-        const briefOriginal = trimmed.trim();
-        const llmExtra = sanitized.additional_prompt != null ? String(sanitized.additional_prompt).trim() : '';
-        const combinedAp = [
-          'BRIEF ORIGINAL (texto integral de Preencher com IA):',
-          briefOriginal,
-          llmExtra ? `--- NOTAS TÉCNICAS EXTRAÍDAS (luz, composição, estilo) ---\n${llmExtra}` : '',
-        ].filter(Boolean).join('\n\n');
-        merged.additional_prompt = combinedAp.slice(0, 80000);
+        merged.additional_prompt = clipAdditionalPromptFromFill(sanitized.additional_prompt);
         return merged;
       });
-      toast({ title: 'Campos preenchidos com sucesso!' });
+      toast({
+        title: 'Campos preenchidos',
+        description: 'Os dados foram distribuídos pelos campos. O prompt adicional contém só notas técnicas opcionais.',
+      });
     } catch (e) {
-      toast({ title: 'Erro ao preencher campos', description: e?.message || 'Não foi possível extrair os campos.', variant: 'destructive' });
+      toast({
+        title: 'Erro ao preencher campos',
+        description: getFriendlyErrorMessage(e) || 'Não foi possível extrair os campos.',
+        variant: 'destructive',
+      });
     } finally {
       setIsFillingFromPrompt(false);
     }
@@ -879,7 +870,7 @@ Responda somente com o JSON.`;
     <>
       <Helmet>
         <title>NeuroDesign - Neuro Ápice</title>
-        <meta name="description" content="Design Builder premium: crie imagens com controle total de composição." />
+        <meta name="description" content="Crie imagens com controle total de composição." />
       </Helmet>
       <NeuroDesignErrorBoundary>
       <div className="flex h-[calc(100vh-4rem)] min-h-[400px] bg-background text-foreground overflow-hidden min-w-0">
@@ -934,116 +925,136 @@ Responda somente com o JSON.`;
               )}
             </div>
           )}
-          {view === 'create' && (
-            <div className="flex flex-1 min-w-0 min-h-0">
-              {isLg && (
-                <div className="w-[420px] xl:w-[480px] shrink-0 overflow-y-auto border-r border-border bg-background min-h-0">
-                  <BuilderPanel
-                    project={selectedProject}
-                    config={currentConfig}
-                    setConfig={setCurrentConfig}
-                    imageConnections={imageConnections}
-                    onGenerate={handleGenerate}
-                    isGenerating={isGenerating}
-                    onFillFromPrompt={handleFillFromPrompt}
-                    hasLlmConnection={llmConnections.length > 0}
-                    isFillingFromPrompt={isFillingFromPrompt}
-                    selectedLlmId={selectedLlmId}
-                    seedFillPrompt={builderFillSeed}
-                  />
-                </div>
-              )}
-              <div className="flex-1 min-w-0 flex flex-col">
-                <PreviewPanel
+          {/* Abas sempre montadas (hidden) para não perder estado ao trocar: texto no Criar, chat Experts, refinamento, etc. */}
+          <div
+            role="tabpanel"
+            id="neurodesign-panel-create"
+            aria-hidden={view !== 'create'}
+            className={cn('flex flex-1 min-w-0 min-h-0', view !== 'create' && 'hidden')}
+          >
+            {isLg && (
+              <div className="w-[420px] xl:w-[480px] shrink-0 overflow-y-auto border-r border-border bg-background min-h-0">
+                <BuilderPanel
                   project={selectedProject}
-                  user={user}
-                  selectedImage={selectedImage}
-                  images={images}
-                  isGenerating={isGenerating}
-                  isRefining={isRefining}
-                  onRefine={handleRefine}
-                  onDownload={downloadHandler}
-                  onSelectImage={setSelectedImage}
-                  hasImageConnection={hasRefineImageConnection}
+                  config={currentConfig}
+                  setConfig={setCurrentConfig}
                   imageConnections={imageConnections}
-                  refineConnectionSelectValue={refineConnectionSelectValue}
-                  onRefineConnectionChange={handleRefineConnectionSelect}
-                  builderInheritHint={builderInheritHint}
+                  onGenerate={handleGenerate}
+                  isGenerating={isGenerating}
+                  onFillFromPrompt={handleFillFromPrompt}
+                  hasLlmConnection={llmConnections.length > 0}
+                  isFillingFromPrompt={isFillingFromPrompt}
+                  selectedLlmId={selectedLlmId}
+                  llmConnections={llmConnections}
+                  onSelectLlmId={setSelectedLlmId}
+                  seedFillPrompt={builderFillSeed}
                 />
               </div>
-            </div>
-          )}
-          {view === 'gallery' && (
-            <div className="flex-1 overflow-y-auto p-4 sm:p-6 min-h-0">
-              <p className="text-sm text-muted-foreground mb-4">
-                Todas as artes que você já gerou no NeuroDesign.
-              </p>
-              <MasonryGallery
+            )}
+            <div className="flex-1 min-w-0 flex flex-col">
+              <PreviewPanel
+                project={selectedProject}
+                user={user}
+                selectedImage={selectedImage}
                 images={images}
-                projectId={selectedProject?.id}
-                userGalleryMode={true}
-                selectedIds={selectedImage ? [selectedImage.id] : []}
-                onSelectImage={(img) => {
-                  setSelectedImage(img);
-                  setIsGalleryPreviewOpen(true);
-                }}
+                isGenerating={isGenerating}
+                isRefining={isRefining}
+                onRefine={handleRefine}
                 onDownload={downloadHandler}
-                onDeleteImage={handleDeleteImage}
+                onSelectImage={setSelectedImage}
+                hasImageConnection={hasRefineImageConnection}
+                imageConnections={imageConnections}
+                refineConnectionSelectValue={refineConnectionSelectValue}
+                onRefineConnectionChange={handleRefineConnectionSelect}
+                builderInheritHint={builderInheritHint}
               />
-              {userGalleryHasMore && (
-                <div className="mt-6 flex justify-center">
+            </div>
+          </div>
+          <div
+            role="tabpanel"
+            id="neurodesign-panel-gallery"
+            aria-hidden={view !== 'gallery'}
+            className={cn('flex-1 overflow-y-auto p-4 sm:p-6 min-h-0', view !== 'gallery' && 'hidden')}
+          >
+            <p className="text-sm text-muted-foreground mb-4">
+              Todas as artes que você já gerou no NeuroDesign.
+            </p>
+            <MasonryGallery
+              images={images}
+              projectId={selectedProject?.id}
+              userGalleryMode={true}
+              selectedIds={selectedImage ? [selectedImage.id] : []}
+              onSelectImage={(img) => {
+                setSelectedImage(img);
+                setIsGalleryPreviewOpen(true);
+              }}
+              onDownload={downloadHandler}
+              onDeleteImage={handleDeleteImage}
+            />
+            {userGalleryHasMore && (
+              <div className="mt-6 flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => loadUserGalleryImages(userGalleryPage, { reset: false })}
+                  disabled={isLoadingUserGallery}
+                >
+                  {isLoadingUserGallery ? 'Carregando...' : 'Carregar mais'}
+                </Button>
+              </div>
+            )}
+          </div>
+          <div
+            role="tabpanel"
+            id="neurodesign-panel-refine"
+            aria-hidden={view !== 'refine'}
+            className={cn('flex flex-1 min-w-0 min-h-0', view !== 'refine' && 'hidden')}
+          >
+            <div className="flex-1 min-w-0 flex flex-col">
+              <div className="px-4 pt-4 sm:px-6">
+                <div className="rounded-lg border border-border bg-muted/30 p-3 flex items-center justify-between gap-3">
+                  <p className="text-sm text-muted-foreground">
+                    Envie uma imagem base para refinar, ou selecione uma arte já existente abaixo.
+                  </p>
                   <Button
-                    variant="outline"
                     size="sm"
-                    onClick={() => loadUserGalleryImages(userGalleryPage, { reset: false })}
-                    disabled={isLoadingUserGallery}
+                    variant="outline"
+                    onClick={() => refineUploadInputRef.current?.click()}
+                    disabled={isUploadingRefineSource}
                   >
-                    {isLoadingUserGallery ? 'Carregando...' : 'Carregar mais'}
+                    <Upload className="h-4 w-4 mr-1" />
+                    {isUploadingRefineSource ? 'Enviando...' : 'Upload para refinamento'}
                   </Button>
                 </div>
-              )}
-            </div>
-          )}
-          {view === 'refine' && (
-            <div className="flex flex-1 min-w-0 min-h-0">
-              <div className="flex-1 min-w-0 flex flex-col">
-                <div className="px-4 pt-4 sm:px-6">
-                  <div className="rounded-lg border border-border bg-muted/30 p-3 flex items-center justify-between gap-3">
-                    <p className="text-sm text-muted-foreground">
-                      Envie uma imagem base para refinar, ou selecione uma arte já existente abaixo.
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => refineUploadInputRef.current?.click()}
-                      disabled={isUploadingRefineSource}
-                    >
-                      <Upload className="h-4 w-4 mr-1" />
-                      {isUploadingRefineSource ? 'Enviando...' : 'Upload para refinamento'}
-                    </Button>
-                  </div>
-                </div>
-                <PreviewPanel
-                  project={selectedProject}
-                  user={user}
-                  selectedImage={selectedImage}
-                  images={images}
-                  isGenerating={false}
-                  isRefining={isRefining}
-                  onRefine={handleRefine}
-                  onDownload={downloadHandler}
-                  onSelectImage={setSelectedImage}
-                  hasImageConnection={hasRefineImageConnection}
-                  imageConnections={imageConnections}
-                  refineConnectionSelectValue={refineConnectionSelectValue}
-                  onRefineConnectionChange={handleRefineConnectionSelect}
-                  builderInheritHint={builderInheritHint}
-                  emptyStateTitle="Aguardando imagem para refinamento"
-                  emptyStateDescription="Faça upload de uma imagem ou selecione uma arte nas miniaturas. Escolha a conexão de imagem acima do preview se o builder não tiver uma selecionada."
-                />
               </div>
+              <PreviewPanel
+                project={selectedProject}
+                user={user}
+                selectedImage={selectedImage}
+                images={images}
+                isGenerating={false}
+                isRefining={isRefining}
+                onRefine={handleRefine}
+                onDownload={downloadHandler}
+                onSelectImage={setSelectedImage}
+                hasImageConnection={hasRefineImageConnection}
+                imageConnections={imageConnections}
+                refineConnectionSelectValue={refineConnectionSelectValue}
+                onRefineConnectionChange={handleRefineConnectionSelect}
+                builderInheritHint={builderInheritHint}
+                emptyStateTitle="Aguardando imagem para refinamento"
+                emptyStateDescription="Faça upload de uma imagem ou selecione uma arte nas miniaturas. Escolha a conexão de imagem acima do preview se o builder não tiver uma selecionada."
+              />
             </div>
-          )}
+          </div>
+          <div
+            role="tabpanel"
+            id="neurodesign-panel-experts"
+            aria-hidden={view !== 'experts'}
+            className={cn('flex flex-1 min-w-0 min-h-0 flex-col overflow-hidden', view !== 'experts' && 'hidden')}
+          >
+            <NeuroDesignExpertsPanel />
+          </div>
         </main>
       </div>
       <input
@@ -1102,6 +1113,8 @@ Responda somente com o JSON.`;
               hasLlmConnection={llmConnections.length > 0}
               isFillingFromPrompt={isFillingFromPrompt}
               selectedLlmId={selectedLlmId}
+              llmConnections={llmConnections}
+              onSelectLlmId={setSelectedLlmId}
               seedFillPrompt={builderFillSeed}
             />
           </div>

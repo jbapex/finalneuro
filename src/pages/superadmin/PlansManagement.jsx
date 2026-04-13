@@ -88,7 +88,7 @@ const PlansManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     const planData = {
       name: formData.name,
       description: formData.description,

@@ -42,6 +42,7 @@ import React, { useRef } from 'react';
             addNode,
             addImageOutputNode,
             addAgentOutputNode,
+            addSiteStructureNode,
             addSitePreviewNode,
             addCarouselSlideImageNode,
             getFreshInputData,
@@ -93,6 +94,7 @@ import React, { useRef } from 'react';
                                     removeNode={removeNode}
                                     onAddImageOutputNode={addImageOutputNode}
                                     onAddAgentOutputNode={addAgentOutputNode}
+                                    onAddSiteStructureNode={addSiteStructureNode}
                                     onAddSitePreviewNode={addSitePreviewNode}
                                     onAddCarouselSlideImageNode={addCarouselSlideImageNode}
                                     getFreshInputData={getFreshInputData}

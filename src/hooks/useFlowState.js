@@ -224,49 +224,67 @@ export const useFlowState = (flowData, flowPaneRef) => {
         });
     }, [setNodes, clients, campaigns, modules, plannings, analyses, presets, knowledgeSources]);
 
-    /** Remove o nó e arestas ligadas; se vier de um carrossel (handle slide-N), limpa a lâmina. */
-    const removeNode = useCallback((nodeId) => {
-        const currentEdges = edgesRef.current;
-        const currentNodes = nodesRef.current;
-        const incoming = currentEdges.filter((e) => e.target === nodeId);
-        const nextEdges = currentEdges.filter((e) => e.source !== nodeId && e.target !== nodeId);
-        let nextNodes = currentNodes.filter((n) => n.id !== nodeId);
+    const mergeCtx = {
+        clients,
+        campaigns,
+        modules,
+        plannings,
+        analyses,
+        presets,
+        knowledgeSources,
+    };
 
-        for (const edge of incoming) {
-            const sourceNode = currentNodes.find((n) => n.id === edge.source);
-            if (!sourceNode || sourceNode.type !== 'carousel') continue;
-            const m = String(edge.sourceHandle || '').match(/^slide-(\d+)$/);
-            if (!m) continue;
-            const slideIdx = parseInt(m[1], 10);
-            const prevSlides = sourceNode.data?.slides;
-            if (!Array.isArray(prevSlides) || slideIdx < 0 || slideIdx >= prevSlides.length) continue;
-            const slides = prevSlides.map((s, i) => {
-                if (i !== slideIdx) return s;
-                const copy = { ...(s || {}) };
-                delete copy.imageUrl;
-                delete copy.runId;
-                delete copy.imageId;
-                delete copy.projectId;
-                return copy;
-            });
-            nextNodes = nextNodes.map((n) =>
-                n.id === sourceNode.id ? { ...n, data: { ...n.data, slides } } : n
-            );
-        }
+    /**
+     * Remove vários nós e arestas ligadas num único update (várias chamadas a removeNode no mesmo tick quebrariam o ref).
+     * Para cada nó, se a aresta entrante vier de carrossel (handle slide-N), limpa a lâmina como em removeNode.
+     */
+    const removeNodesBatch = useCallback(
+        (nodeIds) => {
+            const idSet = new Set((Array.isArray(nodeIds) ? nodeIds : []).filter(Boolean));
+            if (idSet.size === 0) return;
 
-        setEdges(nextEdges);
-        setNodes(
-            mergeReferenceAndInputData(nextNodes, nextEdges, {
-                clients,
-                campaigns,
-                modules,
-                plannings,
-                analyses,
-                presets,
-                knowledgeSources,
-            })
-        );
-    }, [setNodes, setEdges, clients, campaigns, modules, plannings, analyses, presets, knowledgeSources]);
+            const currentEdges = edgesRef.current;
+            const currentNodes = nodesRef.current;
+
+            let nextNodes = currentNodes.map((n) => ({ ...n, data: { ...n.data } }));
+
+            for (const nodeId of idSet) {
+                const incoming = currentEdges.filter((e) => e.target === nodeId);
+                for (const edge of incoming) {
+                    const sourceNode = currentNodes.find((n) => n.id === edge.source);
+                    if (!sourceNode || sourceNode.type !== 'carousel') continue;
+                    const m = String(edge.sourceHandle || '').match(/^slide-(\d+)$/);
+                    if (!m) continue;
+                    const slideIdx = parseInt(m[1], 10);
+                    const carouselState = nextNodes.find((n) => n.id === sourceNode.id);
+                    const prevSlides = carouselState?.data?.slides;
+                    if (!Array.isArray(prevSlides) || slideIdx < 0 || slideIdx >= prevSlides.length) continue;
+                    const slides = prevSlides.map((s, i) => {
+                        if (i !== slideIdx) return s;
+                        const copy = { ...(s || {}) };
+                        delete copy.imageUrl;
+                        delete copy.runId;
+                        delete copy.imageId;
+                        delete copy.projectId;
+                        return copy;
+                    });
+                    nextNodes = nextNodes.map((n) =>
+                        n.id === sourceNode.id ? { ...n, data: { ...n.data, slides } } : n
+                    );
+                }
+            }
+
+            const nextEdges = currentEdges.filter((e) => !idSet.has(e.source) && !idSet.has(e.target));
+            nextNodes = nextNodes.filter((n) => !idSet.has(n.id));
+
+            setEdges(nextEdges);
+            setNodes(mergeReferenceAndInputData(nextNodes, nextEdges, mergeCtx));
+        },
+        [setNodes, setEdges, clients, campaigns, modules, plannings, analyses, presets, knowledgeSources]
+    );
+
+    /** Remove um nó e arestas ligadas; se vier de um carrossel (handle slide-N), limpa a lâmina. */
+    const removeNode = useCallback((nodeId) => removeNodesBatch([nodeId]), [removeNodesBatch]);
 
     const addNode = useCallback((type, label) => {
         let position = { x: Math.random() * 400, y: Math.random() * 400 };
@@ -308,6 +326,7 @@ export const useFlowState = (flowData, flowPaneRef) => {
                 break;
             case 'image_generator':
                 nodeData.presets = presets;
+                nodeData.imageGeneratorConfigured = false;
                 break;
             case 'knowledge':
                 nodeData.knowledgeSources = knowledgeSources;
@@ -372,19 +391,57 @@ export const useFlowState = (flowData, flowPaneRef) => {
         });
     }, [setNodes, setEdges]);
 
-    const addSitePreviewNode = useCallback((sourceNodeId, { projectId, projectName } = {}) => {
+    const addSiteStructureNode = useCallback((sourceNodeId, payload = {}) => {
+        const {
+            projectName = '',
+            structureText = '',
+            siteCreatorNodeId,
+            flowContextJson = '',
+            llm_integration_id = null,
+            llm_is_user_connection = false,
+        } = payload;
+        setNodes((nds) => {
+            const source = nds.find((n) => n.id === sourceNodeId);
+            if (!source) return nds;
+            const position = { x: (source.position?.x ?? 0) + 340, y: source.position?.y ?? 0 };
+            const newId = `site_structure-${uuidv4()}`;
+            const safeName = typeof projectName === 'string' && projectName.trim() ? projectName.trim() : 'Site';
+            const creatorId = siteCreatorNodeId || sourceNodeId;
+            const newNode = getNodeDefaults('site_structure', position, {
+                label: `Estrutura: ${safeName}`,
+                projectName: safeName,
+                structureText: typeof structureText === 'string' ? structureText : '',
+                flowContextJson: typeof flowContextJson === 'string' ? flowContextJson : '',
+                siteCreatorNodeId: creatorId,
+                llm_integration_id,
+                llm_is_user_connection: Boolean(llm_is_user_connection),
+            });
+            newNode.id = newId;
+            queueMicrotask(() => {
+                setEdges((eds) => addEdge({ source: sourceNodeId, target: newId, animated: true }, eds));
+            });
+            return nds.concat(newNode);
+        });
+    }, [setNodes, setEdges]);
+
+    const addSitePreviewNode = useCallback((sourceNodeId, { projectId, projectName, siteCreatorNodeId } = {}) => {
         if (!projectId) return;
         setNodes((nds) => {
+            if (nds.some((n) => n.type === 'site_preview' && String(n.data?.projectId) === String(projectId))) {
+                return nds;
+            }
             const source = nds.find((n) => n.id === sourceNodeId);
             if (!source) return nds;
             const position = { x: (source.position?.x ?? 0) + 340, y: source.position?.y ?? 0 };
             const newId = `site_preview-${uuidv4()}`;
             const safeName = typeof projectName === 'string' && projectName.trim() ? projectName.trim() : 'Site';
+            const creatorRef = siteCreatorNodeId != null ? siteCreatorNodeId : sourceNodeId;
             const newNode = getNodeDefaults('site_preview', position, {
                 label: `Preview: ${safeName}`,
                 projectId,
                 projectName: safeName,
-                sourceSiteCreatorNodeId: sourceNodeId,
+                sourceSiteCreatorNodeId: creatorRef,
+                siteCreatorNodeId: creatorRef,
             });
             newNode.id = newId;
             queueMicrotask(() => {
@@ -563,6 +620,7 @@ export const useFlowState = (flowData, flowPaneRef) => {
         addNode,
         addImageOutputNode,
         addAgentOutputNode,
+        addSiteStructureNode,
         addSitePreviewNode,
         addCarouselSlideImageNode,
         getFreshInputData,

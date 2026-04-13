@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useMediaQuery } from '@/hooks/use-media-query';
-import { Home, Settings, Users, Layers, Zap, MessageSquare as BotMessageSquare, PenSquare, Palette, ClipboardList, LogOut, Brain, BookCopy, Mic, Menu, Image as ImageIcon, Church, Webhook, Mail } from 'lucide-react';
+import { Home, Settings, Users, Layers, Zap, MessageSquare as BotMessageSquare, PenSquare, Palette, ClipboardList, LogOut, Brain, BookCopy, Mic, Menu, Image as ImageIcon, Church, Webhook, Mail, Sparkles } from 'lucide-react';
 import ThemeToggle from '@/components/ThemeToggle';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -36,6 +36,7 @@ const SuperAdminLayout = () => {
     { to: '/superadmin/kiwify', icon: Webhook, label: 'Integração Kiwify' },
     { to: '/superadmin/email-smtp', icon: Mail, label: 'E-mail SMTP' },
     { to: '/superadmin/variaveis', icon: BookCopy, label: 'Variáveis do Sistema' },
+    { to: '/superadmin/fundador-landing', icon: Sparkles, label: 'Landing Fundador' },
     { to: '/ferramentas/artes-culto', icon: Church, label: 'Artes de Culto' },
   ];
 

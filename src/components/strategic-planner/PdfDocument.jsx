@@ -227,16 +227,17 @@ const PdfSection = ({ title, content, stepKey }) => {
 
 
 const PdfDocument = ({ planningData }) => {
-  const { planningSteps, clientName, campaignName, month, year } = planningData;
+  const { planningSteps, clientName, campaignName, scopeLabel, month, year } = planningData;
+  const scope = scopeLabel || campaignName || 'Contexto';
   const monthName = new Date(year, month - 1).toLocaleString('pt-BR', { month: 'long' });
   const generationDate = new Date().toLocaleString('pt-BR');
 
   return (
-    <Document author="Cérebro Ápice" title={`Planejamento - ${campaignName}`}>
+    <Document author="Cérebro Ápice" title={`Planejamento - ${scope}`}>
       <Page size="A4" style={styles.page}>
         <View style={styles.header} fixed>
           <Text style={styles.mainTitle}>Plano Estratégico de Campanha</Text>
-          <Text style={styles.subtitle}>{`${clientName} - ${campaignName}`}</Text>
+          <Text style={styles.subtitle}>{`${clientName} — ${scope}`}</Text>
           <Text style={styles.subtitle}>{`${monthName.charAt(0).toUpperCase() + monthName.slice(1)} de ${year}`}</Text>
         </View>
 

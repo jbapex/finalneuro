@@ -42,7 +42,11 @@ serve(async (req) => {
       );
     }
 
-    const contentType = res.headers.get("content-type") || "video/mp4";
+    // Alguns endpoints devolvem application/octet-stream — o <video> no browser precisa de video/* para tratar como MP4.
+    let contentType = (res.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!contentType.startsWith("video/")) {
+      contentType = "video/mp4";
+    }
     return new Response(res.body, {
       status: 200,
       headers: {

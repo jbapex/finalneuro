@@ -25,7 +25,15 @@ const ImageModelDialog = ({ isOpen, setIsOpen, editingModel, connection, onFinis
         setIsLoadingModels(true);
         setOpenRouterModels([]);
         try {
-          const { data, error } = await supabase.functions.invoke('get-openrouter-models');
+          const apiKey = connection?.api_key?.trim?.() ?? '';
+          if (!apiKey) {
+            setOpenRouterModels([]);
+            setIsLoadingModels(false);
+            return;
+          }
+          const { data, error } = await supabase.functions.invoke('get-openrouter-models', {
+            body: { apiKey },
+          });
           if (error) throw error;
           const list = data?.models ?? data?.data ?? (Array.isArray(data) ? data : []);
           const imageModels = list.filter((m) =>
@@ -50,7 +58,7 @@ const ImageModelDialog = ({ isOpen, setIsOpen, editingModel, connection, onFinis
     if (isOpen && connection) {
       fetchOpenRouterImageModels();
     }
-  }, [isOpen, connection]);
+  }, [isOpen, connection?.id, connection?.provider, connection?.api_key]);
 
   useEffect(() => {
     if (editingModel) {

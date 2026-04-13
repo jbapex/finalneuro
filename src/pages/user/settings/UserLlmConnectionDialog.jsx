@@ -9,6 +9,12 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
+import {
+  compareOpenRouterLlmModels,
+  isOpenRouterTextChatModel,
+  normalizeOpenRouterModelsList,
+  toOpenRouterIdNameList,
+} from '@/lib/openRouterModels';
 
 const llmProviderOptions = ['OpenAI', 'OpenRouter', 'Google'];
 
@@ -36,6 +42,7 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
     default_model: '',
   });
   const [isSaving, setIsSaving] = useState(false);
+  const [openRouterSearch, setOpenRouterSearch] = useState('');
 
   const debouncedApiKey = useDebounce(formData.api_key, 500);
 
@@ -46,11 +53,9 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
     try {
       const { data, error } = await supabase.functions.invoke('get-openrouter-models', { body: { apiKey } });
       if (error) throw new Error(error.message);
-      const list = data?.models ?? data?.data ?? (Array.isArray(data) ? data : []);
-      const normalized = Array.isArray(list)
-        ? list.map((m) => ({ id: m?.id ?? m?.name ?? '', name: m?.name ?? m?.id ?? '' })).filter((m) => m.id)
-        : [];
-      setOpenRouterModels(normalized.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+      const list = normalizeOpenRouterModelsList(data).filter(isOpenRouterTextChatModel);
+      const normalized = toOpenRouterIdNameList(list).sort(compareOpenRouterLlmModels);
+      setOpenRouterModels(normalized);
     } catch (err) {
       toast.error('Falha ao buscar modelos OpenRouter', { description: 'Verifique a chave da API e tente novamente.' });
       setOpenRouterModels([]);
@@ -149,6 +154,7 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
         });
       }
       setShowApiKey(false);
+      setOpenRouterSearch('');
     }
   }, [editingConnection, isOpen]);
 
@@ -197,9 +203,20 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
     }
   };
 
+  const openRouterModelsFiltered =
+    formData.provider === 'OpenRouter' && openRouterSearch.trim()
+      ? openRouterModels.filter((m) => {
+          const q = openRouterSearch.trim().toLowerCase();
+          return (
+            (m.id && m.id.toLowerCase().includes(q)) ||
+            (m.name && String(m.name).toLowerCase().includes(q))
+          );
+        })
+      : openRouterModels;
+
   const currentModels =
     formData.provider === 'OpenRouter'
-      ? openRouterModels
+      ? openRouterModelsFiltered
       : formData.provider === 'Google'
         ? googleModels
         : openaiModels;
@@ -265,6 +282,22 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
             </div>
             <p className="text-xs text-muted-foreground">A lista de modelos será carregada após inserir uma chave válida.</p>
           </div>
+          {formData.provider === 'OpenRouter' && openRouterModels.length > 0 && (
+            <div className="grid gap-2">
+              <Label htmlFor="llm-or-search">Buscar modelo</Label>
+              <Input
+                id="llm-or-search"
+                value={openRouterSearch}
+                onChange={(e) => setOpenRouterSearch(e.target.value)}
+                placeholder="Ex.: free, llama, gemma…"
+                className="w-full"
+              />
+              <p className="text-xs text-muted-foreground">
+                Modelos gratuitos OpenRouter costumam ter <code className="text-xs">:free</code> no ID ou o roteador{' '}
+                <code className="text-xs">openrouter/free</code>; aparecem no topo da lista.
+              </p>
+            </div>
+          )}
           <div className="grid gap-2">
             <Label htmlFor="llm-model">Modelo padrão</Label>
             <Select
@@ -284,7 +317,7 @@ const UserLlmConnectionDialog = ({ isOpen, setIsOpen, editingConnection, onFinis
                   <SelectValue placeholder="Selecione um modelo" />
                 )}
               </SelectTrigger>
-              <SelectContent className="max-h-60">
+              <SelectContent className="max-h-[min(24rem,70vh)]">
                 {currentModels.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
                     {m.name || m.id}

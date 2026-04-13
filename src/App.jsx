@@ -23,6 +23,7 @@ import React from 'react';
     import StrategicPlannerPage from '@/pages/superadmin/StrategicPlannerPage';
     import SuperAdminGalleryImages from '@/pages/superadmin/GalleryImages';
     import KiwifyIntegration from '@/pages/superadmin/KiwifyIntegration';
+    import FundadorLandingSettings from '@/pages/superadmin/FundadorLandingSettings';
     import WhisperTranscriber from '@/pages/user/WhisperTranscriber';
     
     import UserLayout from '@/components/UserLayout';
@@ -36,6 +37,7 @@ import React from 'react';
     import SettingsPage from '@/pages/user/SettingsPage';
     import PrivacyPolicy from '@/pages/public/PrivacyPolicy';
     import DataDeletion from '@/pages/public/DataDeletion';
+    import FundadorLandingPage from '@/pages/public/FundadorLandingPage';
     import MetaAdsCallback from '@/pages/user/settings/MetaAdsCallback';
     import Clients from '@/pages/user/Clients';
     import ToolsPage from '@/pages/user/ToolsPage';
@@ -43,12 +45,14 @@ import React from 'react';
     import ImageGenerator from '@/pages/user/ImageGenerator';
     import NeuroDesignPage from '@/pages/user/NeuroDesignPage';
     import NeuroFlowPage from '@/pages/user/NeuroFlowPage';
+    import NeuroMotionPage from '@/pages/user/NeuroMotionPage';
     import ArtesCultoPage from '@/pages/user/ArtesCultoPage';
     import MobileMenu from '@/pages/user/MobileMenu';
     import AiChatPage from '@/pages/user/AiChat';
     import PerformanceDashboard from '@/pages/user/PerformanceDashboard';
     import MobileSiteEditor from '@/pages/user/MobileSiteEditor';
     import PwaUpdateNotification from '@/components/PwaUpdateNotification';
+    import MetaPixelRouteTracker from '@/components/analytics/MetaPixelRouteTracker';
     import TrendingTopics from '@/pages/user/TrendingTopics';
     import KeywordPlanner from '@/pages/user/KeywordPlanner';
     import PublicationCalendar from '@/pages/user/PublicationCalendar';
@@ -61,7 +65,12 @@ import React from 'react';
       const location = useLocation();
     
       const isAuthRoute = location.pathname === '/auth';
-      const isPublicRoute = location.pathname.startsWith('/politica') || location.pathname.startsWith('/exclusao') || location.pathname.startsWith('/integrations') || location.pathname.startsWith('/site-preview');
+      const isPublicRoute =
+        location.pathname.startsWith('/politica') ||
+        location.pathname.startsWith('/exclusao') ||
+        location.pathname.startsWith('/integrations') ||
+        location.pathname.startsWith('/site-preview') ||
+        location.pathname === '/fundador';
     
       if (loading && !isAuthRoute && !isPublicRoute) {
         return (
@@ -103,6 +112,7 @@ import React from 'react';
     
       return (
           <>
+            <MetaPixelRouteTracker />
             <Helmet>
                 <title>Neuro Ápice - Sistema de Gestão Inteligente</title>
                 <meta name="description" content="Sistema avançado de gestão com módulos de agentes inteligentes, planos personalizados e administração completa." />
@@ -112,6 +122,7 @@ import React from 'react';
                 <Routes>
                     <Route path="/" element={<Navigate to={homeRedirectPath} />} />
                     <Route path="/auth" element={<AuthPage />} />
+                    <Route path="/fundador" element={<FundadorLandingPage />} />
                     
                     <Route path="/politica-de-privacidade" element={<PrivacyPolicy />} />
                     <Route path="/exclusao-de-dados" element={<DataDeletion />} />
@@ -184,6 +195,7 @@ import React from 'react';
                         <Route path="criar-site" element={<SuperAdminSiteProjectsList />} />
                         <Route path="transcritor" element={<WhisperTranscriber />} />
                         <Route path="galeria-imagens" element={<SuperAdminGalleryImages />} />
+                        <Route path="fundador-landing" element={<FundadorLandingSettings />} />
                     </Route>
     
                     <Route 
@@ -206,6 +218,7 @@ import React from 'react';
                         <Route path="ferramentas/gerador-de-imagens" element={<ProtectedRoute permissionKey="image_generator"><ImageGenerator /></ProtectedRoute>} />
                         <Route path="ferramentas/neurodesign" element={<ProtectedRoute><NeuroDesignPage /></ProtectedRoute>} />
                         <Route path="ferramentas/neuro-flow" element={<ProtectedRoute><NeuroFlowPage /></ProtectedRoute>} />
+                        <Route path="ferramentas/neuro-motion" element={<ProtectedRoute><NeuroMotionPage /></ProtectedRoute>} />
                         <Route path="ferramentas/artes-culto" element={<ProtectedRoute><ArtesCultoPage /></ProtectedRoute>} />
                         <Route path="ferramentas/assuntos-em-alta" element={<TrendingTopics />} />
                         <Route path="ferramentas/planejador-de-palavras-chave" element={<KeywordPlanner />} />

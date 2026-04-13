@@ -10,8 +10,9 @@ import RefineImageModal from '@/components/flow-builder/modals/RefineImageModal'
 import { getImageExpiryMeta } from '@/lib/neurodesign/imageExpiry';
 import { deleteNeurodesignGeneratedImageClient } from '@/lib/neurodesign/deleteGeneratedImageClient';
 import { cn } from '@/lib/utils';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
-const GeneratedImageNode = memo(({ id, data }) => {
+const GeneratedImageNode = memo(({ id, data, selected }) => {
   const imageUrl = data?.imageUrl || '';
   const label = data?.label || 'Imagem gerada';
   const { user } = useAuth();
@@ -122,9 +123,12 @@ const GeneratedImageNode = memo(({ id, data }) => {
   return (
     <Card className="w-56 border-2 border-emerald-500/50 shadow-lg overflow-hidden">
       <Handle type="target" position={Position.Left} className="!bg-emerald-500" />
-      <CardHeader className="flex-row items-center space-x-2 p-2 bg-emerald-500/10">
-        <ImageIcon className="w-4 h-4 text-emerald-500 shrink-0" />
-        <span className="text-sm font-medium truncate">{label}</span>
+      <CardHeader className="flex flex-row items-center gap-2 p-2 bg-emerald-500/10 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <ImageIcon className="w-4 h-4 shrink-0 text-emerald-500" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">{label}</span>
+        </div>
+        <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
       </CardHeader>
       <CardContent className="p-2">
         <div className="w-full aspect-square bg-muted rounded-md overflow-hidden flex items-center justify-center relative group">

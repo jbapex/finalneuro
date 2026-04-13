@@ -9,6 +9,12 @@ import { toast } from 'sonner';
 import { supabase } from '@/lib/customSupabaseClient';
 import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/use-debounce';
+import {
+  compareOpenRouterLlmModels,
+  isOpenRouterTextChatModel,
+  normalizeOpenRouterModelsList,
+  toOpenRouterIdNameList,
+} from '@/lib/openRouterModels';
 
 const siteBuilderProviderOptions = ['OpenAI', 'OpenRouter', 'Google'];
 
@@ -21,6 +27,7 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [isLoadingGoogleModels, setIsLoadingGoogleModels] = useState(false);
   const [isLoadingOpenAIModels, setIsLoadingOpenAIModels] = useState(false);
+  const [openRouterSearch, setOpenRouterSearch] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     provider: 'OpenAI',
@@ -46,6 +53,7 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
     setIsLoadingModels(false);
     setIsLoadingGoogleModels(false);
     setIsLoadingOpenAIModels(false);
+    setOpenRouterSearch('');
   };
 
   const fetchOpenRouterModels = useCallback(async (apiKey) => {
@@ -60,11 +68,9 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
         throw new Error(error.message);
       }
       
-      const list = data?.models ?? data?.data ?? (Array.isArray(data) ? data : []);
-      const normalized = Array.isArray(list)
-        ? list.map((m) => ({ id: m?.id ?? m?.name ?? '', name: m?.name ?? m?.id ?? '' })).filter((m) => m.id)
-        : [];
-      setOpenRouterModels(normalized.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+      const list = normalizeOpenRouterModelsList(data).filter(isOpenRouterTextChatModel);
+      const normalized = toOpenRouterIdNameList(list).sort(compareOpenRouterLlmModels);
+      setOpenRouterModels(normalized);
     } catch (error) {
       toast.error('Falha ao buscar modelos da OpenRouter', { description: 'Verifique se sua chave de API está correta e tente novamente.' });
       setOpenRouterModels([]);
@@ -207,6 +213,17 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
     }
   };
 
+  const openRouterModelsFiltered =
+    openRouterSearch.trim()
+      ? openRouterModels.filter((m) => {
+          const q = openRouterSearch.trim().toLowerCase();
+          return (
+            (m.id && m.id.toLowerCase().includes(q)) ||
+            (m.name && String(m.name).toLowerCase().includes(q))
+          );
+        })
+      : openRouterModels;
+
   const renderModelInput = () => {
     if (formData.provider === 'OpenRouter') {
       return (
@@ -219,8 +236,8 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
             <SelectTrigger id="sb-conn-default_model" className="w-full glass-effect border-white/20">
               <SelectValue placeholder={isLoadingModels ? "Carregando modelos..." : openRouterModels.length === 0 ? "Informe a chave da API para carregar os modelos" : "Selecione um modelo"} />
             </SelectTrigger>
-            <SelectContent className="bg-gray-800 text-white border-white/20 max-h-60">
-              {openRouterModels.map(model => (
+            <SelectContent className="bg-gray-800 text-white border-white/20 max-h-[min(24rem,70vh)]">
+              {openRouterModelsFiltered.map(model => (
                 <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
               ))}
             </SelectContent>
@@ -310,6 +327,18 @@ const UserSiteBuilderConnectionDialog = ({ isOpen, setIsOpen, editingConnection,
             </div>
             <p className="text-xs text-muted-foreground mt-1">A lista de modelos será carregada após inserir uma chave válida.</p>
           </div>
+          {formData.provider === 'OpenRouter' && openRouterModels.length > 0 && (
+            <div>
+              <Label htmlFor="sb-or-search">Buscar modelo</Label>
+              <Input
+                id="sb-or-search"
+                value={openRouterSearch}
+                onChange={(e) => setOpenRouterSearch(e.target.value)}
+                placeholder="Ex.: free, llama…"
+                className="glass-effect border-white/20"
+              />
+            </div>
+          )}
            <div>
             <Label htmlFor="sb-conn-default_model">Modelo Padrão</Label>
             {renderModelInput()}

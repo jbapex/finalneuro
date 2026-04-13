@@ -19,7 +19,7 @@ const ContentViewModal = ({ isOpen, onClose, title, content, onRefineClick }) =>
 
     const handleRefine = () => {
         onClose();
-        onRefineClick();
+        onRefineClick?.();
     };
 
     return (

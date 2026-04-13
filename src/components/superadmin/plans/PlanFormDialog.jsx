@@ -36,7 +36,7 @@ const PlanFormDialog = ({
   setFormData,
   modules,
   aiModels,
-  onOpenChange
+  onOpenChange,
 }) => {
   const handleSubmitInternal = (e) => {
     e.preventDefault();

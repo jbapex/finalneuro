@@ -16,6 +16,7 @@ import {
 import { FileText, Loader2, Plus } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
 const ALL_CONTEXTS_ID = '__all__';
 
@@ -29,7 +30,7 @@ async function loadClientContexts(clientId) {
   return list || [];
 }
 
-const ContextNode = memo(({ data, id }) => {
+const ContextNode = memo(({ data, id, selected }) => {
   const { onUpdateNodeData, clients, inputData, selectedClientId, selectedContextId } = data;
   const { toast } = useToast();
   const [contexts, setContexts] = useState(data.contextsList || []);
@@ -176,9 +177,12 @@ const ContextNode = memo(({ data, id }) => {
     <>
       <Card className="w-72 border-2 border-violet-500/50 shadow-lg">
         <Handle type="target" position={Position.Left} className="!bg-violet-500" />
-        <CardHeader className="flex-row items-center space-x-2 p-3 bg-violet-500/10">
-          <FileText className="w-5 h-5 text-violet-500" />
-          <CardTitle className="text-base">Contexto</CardTitle>
+        <CardHeader className="flex flex-row items-center gap-2 p-3 bg-violet-500/10 min-w-0">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <FileText className="w-5 h-5 shrink-0 text-violet-500" />
+            <CardTitle className="text-base truncate">Contexto</CardTitle>
+          </div>
+          <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
         </CardHeader>
         <CardContent className="p-3 space-y-2">
           {showClientSelector && (

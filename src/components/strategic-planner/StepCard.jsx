@@ -149,8 +149,13 @@ const StepCard = ({ step, title, description, planningId, initialData, onUpdate,
       const { data, error } = await supabase.functions.invoke('strategic-planner', {
         body: { 
             step: step, 
-            campaign_id: context.campaignId, 
+            campaign_id: context.campaignId ?? null, 
             client_id: context.clientId, 
+            client_context_id: context.clientContextId ?? null,
+            client_context_name: context.clientContextData?.name ?? null,
+            client_context_excerpt: typeof context.clientContextData?.content === 'string'
+              ? context.clientContextData.content.slice(0, 12000)
+              : null,
             month: context.month, 
             year: context.year,
             previous_steps: context.previousSteps,

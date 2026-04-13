@@ -216,15 +216,17 @@ const AiChatSidebar = ({
           <Button
             variant="ghost"
             className={cn(
-              "w-full justify-start h-auto py-2 px-2 rounded-md text-left",
+              "w-full justify-start h-auto py-2 pl-2 pr-14 rounded-md text-left gap-0 overflow-hidden",
               activeSessionId === session.id && "bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground font-medium"
             )}
             onClick={() => onSelectSession(session.id)}
           >
-            <MessageSquare className="mr-2 h-4 w-4 flex-shrink-0 opacity-80" />
-            <span className="truncate text-sm">{session.title || 'Sem título'}</span>
+            <MessageSquare className="mr-2 h-4 w-4 shrink-0 opacity-80" />
+            <span className="min-w-0 flex-1 truncate text-left text-sm" title={session.title || 'Sem título'}>
+              {session.title || 'Sem título'}
+            </span>
           </Button>
-          <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute right-1 top-1/2 z-10 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => e.stopPropagation()} title="Mover para pasta">

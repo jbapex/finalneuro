@@ -143,6 +143,183 @@ function parseSections(html) {
   });
 }
 
+/** Brief do projeto (reutilizado no modo página completa e no modal por módulos). */
+function SiteBriefFormSection({ projectBrief = null, onSaveBrief, clients = [], className }) {
+  const [briefForm, setBriefForm] = useState({
+    site_name: '',
+    niche: '',
+    primary_color: '',
+    secondary_color: '',
+    tone: '',
+    target_audience: '',
+    estilo_visual: '',
+    notes: '',
+  });
+  const [briefFromClientId, setBriefFromClientId] = useState('');
+
+  useEffect(() => {
+    if (projectBrief && typeof projectBrief === 'object') {
+      setBriefForm({
+        site_name: projectBrief.site_name ?? '',
+        niche: projectBrief.niche ?? '',
+        primary_color: projectBrief.primary_color ?? '',
+        secondary_color: projectBrief.secondary_color ?? '',
+        tone: projectBrief.tone ?? '',
+        target_audience: projectBrief.target_audience ?? '',
+        estilo_visual: projectBrief.estilo_visual ?? '',
+        notes: projectBrief.notes ?? '',
+      });
+      setBriefFromClientId('');
+    }
+  }, [projectBrief]);
+
+  const handleFillBriefFromClient = useCallback(
+    (clientId) => {
+      if (!clientId || !clients.length) return;
+      const client = clients.find((c) => String(c.id) === String(clientId));
+      if (!client) return;
+      const notesParts = [];
+      if (client.product_to_promote) notesParts.push(`Produto/serviço: ${client.product_to_promote}`);
+      if (client.about) notesParts.push(client.about);
+      setBriefForm({
+        site_name: client.name ?? '',
+        niche: client.niche ?? '',
+        primary_color: '',
+        secondary_color: '',
+        tone: client.style_in_3_words ?? '',
+        target_audience: client.target_audience ?? '',
+        estilo_visual: '',
+        notes: notesParts.join('\n\n').trim() || '',
+      });
+    },
+    [clients]
+  );
+
+  return (
+    <div className={cn('flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto', className)}>
+      <Label className="text-sm font-medium shrink-0">Brief do projeto (opcional)</Label>
+      <p className="text-xs text-muted-foreground shrink-0">
+        Preencha para dar contexto à IA sobre o site. A IA usará essas informações ao gerar ou alterar seções.
+      </p>
+      {Array.isArray(clients) && clients.length > 0 && (
+        <div className="space-y-1.5 shrink-0">
+          <Label className="text-xs text-muted-foreground">Preencher com dados de um cliente</Label>
+          <Select
+            value={briefFromClientId}
+            onValueChange={(value) => {
+              if (value) {
+                handleFillBriefFromClient(value);
+                setBriefFromClientId(value);
+              } else {
+                setBriefFromClientId('');
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 text-sm">
+              <SelectValue placeholder="Selecione um cliente…" />
+            </SelectTrigger>
+            <SelectContent>
+              {clients.map((c) => (
+                <SelectItem key={c.id} value={String(c.id)}>
+                  {c.name || `Cliente ${c.id}`}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+      <div className="grid gap-2">
+        <div>
+          <Label className="text-xs text-muted-foreground">Nome do site</Label>
+          <Input
+            value={briefForm.site_name}
+            onChange={(e) => setBriefForm((p) => ({ ...p, site_name: e.target.value }))}
+            placeholder="Ex: Minha Marca"
+            className="mt-1 h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Nicho</Label>
+          <Input
+            value={briefForm.niche}
+            onChange={(e) => setBriefForm((p) => ({ ...p, niche: e.target.value }))}
+            placeholder="Ex: tecnologia, saúde"
+            className="mt-1 h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Cor primária</Label>
+          <Input
+            value={briefForm.primary_color}
+            onChange={(e) => setBriefForm((p) => ({ ...p, primary_color: e.target.value }))}
+            placeholder="Ex: blue-600, #2563eb"
+            className="mt-1 h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Cor secundária</Label>
+          <Input
+            value={briefForm.secondary_color}
+            onChange={(e) => setBriefForm((p) => ({ ...p, secondary_color: e.target.value }))}
+            placeholder="Ex: gray-100"
+            className="mt-1 h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Tom</Label>
+          <Input
+            value={briefForm.tone}
+            onChange={(e) => setBriefForm((p) => ({ ...p, tone: e.target.value }))}
+            placeholder="Ex: profissional, criativo"
+            className="mt-1 h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Público-alvo</Label>
+          <Input
+            value={briefForm.target_audience}
+            onChange={(e) => setBriefForm((p) => ({ ...p, target_audience: e.target.value }))}
+            placeholder="Ex: pequenos negócios"
+            className="mt-1 h-8 text-sm"
+          />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Estilo visual</Label>
+          <Select
+            value={briefForm.estilo_visual || '__none__'}
+            onValueChange={(v) => setBriefForm((p) => ({ ...p, estilo_visual: v === '__none__' ? '' : v }))}
+          >
+            <SelectTrigger className="mt-1 h-8 text-sm">
+              <SelectValue placeholder="Selecione o estilo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Nenhum (IA decide)</SelectItem>
+              <SelectItem value="Minimalista">Minimalista</SelectItem>
+              <SelectItem value="Corporativo">Corporativo</SelectItem>
+              <SelectItem value="Criativo">Criativo</SelectItem>
+              <SelectItem value="Bold/Impacto">Bold / Impacto</SelectItem>
+              <SelectItem value="Elegante">Elegante</SelectItem>
+              <SelectItem value="Moderno">Moderno</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Observações</Label>
+          <Textarea
+            value={briefForm.notes}
+            onChange={(e) => setBriefForm((p) => ({ ...p, notes: e.target.value }))}
+            placeholder="Outras preferências..."
+            className="mt-1 text-sm min-h-[60px]"
+          />
+        </div>
+      </div>
+      <Button size="sm" onClick={() => onSaveBrief(briefForm)} className="shrink-0 w-fit">
+        Salvar brief
+      </Button>
+    </div>
+  );
+}
+
 function SortableSectionItem({ section, disabled }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: section.id,
@@ -199,33 +376,6 @@ const ChatPanel = ({
   const [chatInput, setChatInput] = useState('');
   const [thinkingStep, setThinkingStep] = useState(0);
   const messagesEndRef = useRef(null);
-  const [briefForm, setBriefForm] = useState({
-    site_name: '',
-    niche: '',
-    primary_color: '',
-    secondary_color: '',
-    tone: '',
-    target_audience: '',
-    estilo_visual: '',
-    notes: '',
-  });
-  const [briefFromClientId, setBriefFromClientId] = useState('');
-
-  useEffect(() => {
-    if (projectBrief && typeof projectBrief === 'object') {
-      setBriefForm({
-        site_name: projectBrief.site_name ?? '',
-        niche: projectBrief.niche ?? '',
-        primary_color: projectBrief.primary_color ?? '',
-        secondary_color: projectBrief.secondary_color ?? '',
-        tone: projectBrief.tone ?? '',
-        target_audience: projectBrief.target_audience ?? '',
-        estilo_visual: projectBrief.estilo_visual ?? '',
-        notes: projectBrief.notes ?? '',
-      });
-      setBriefFromClientId('');
-    }
-  }, [projectBrief]);
 
   const sections = useMemo(() => parseSections(htmlContent || ''), [htmlContent]);
 
@@ -271,29 +421,20 @@ const ChatPanel = ({
     onSendMessage(msg);
   };
 
-  const handleFillBriefFromClient = useCallback(
-    (clientId) => {
-      if (!clientId || !clients.length) return;
-      const client = clients.find((c) => String(c.id) === String(clientId));
-      if (!client) return;
-      const notesParts = [];
-      if (client.product_to_promote) notesParts.push(`Produto/serviço: ${client.product_to_promote}`);
-      if (client.about) notesParts.push(client.about);
-      setBriefForm({
-        site_name: client.name ?? '',
-        niche: client.niche ?? '',
-        primary_color: '',
-        secondary_color: '',
-        tone: client.style_in_3_words ?? '',
-        target_audience: client.target_audience ?? '',
-        estilo_visual: '',
-        notes: notesParts.join('\n\n').trim() || '',
-      });
-    },
-    [clients]
-  );
-
   if (!isHtmlMode) {
+    if (typeof onSaveBrief === 'function') {
+      return (
+        <div className="flex flex-col h-full p-4 border rounded-lg bg-card min-h-0 overflow-hidden">
+          <p className="text-xs text-muted-foreground shrink-0 mb-2">
+            {pageStructure != null ? (
+              <span>{pageStructure.length} módulo(s). </span>
+            ) : null}
+            O brief é guardado no projeto e pode ser usado pela IA no criador de site completo e em futuras integrações.
+          </p>
+          <SiteBriefFormSection projectBrief={projectBrief} onSaveBrief={onSaveBrief} clients={clients} />
+        </div>
+      );
+    }
     return (
       <div className="flex flex-col h-full p-4 border rounded-lg bg-card min-h-0 overflow-hidden">
         <p className="text-sm text-muted-foreground">Chat com IA (painel de módulos / conteúdo)</p>
@@ -356,127 +497,7 @@ const ChatPanel = ({
       )}
 
       {activeTab === 'brief' && typeof onSaveBrief === 'function' ? (
-        <div className="flex flex-col gap-3 flex-1 min-h-0 overflow-y-auto">
-          <Label className="text-sm font-medium shrink-0">Brief do projeto (opcional)</Label>
-          <p className="text-xs text-muted-foreground shrink-0">
-            Preencha para dar contexto à IA sobre o site. A IA usará essas informações ao gerar ou alterar seções.
-          </p>
-          {Array.isArray(clients) && clients.length > 0 && (
-            <div className="space-y-1.5 shrink-0">
-              <Label className="text-xs text-muted-foreground">Preencher com dados de um cliente</Label>
-              <Select
-                value={briefFromClientId}
-                onValueChange={(value) => {
-                  if (value) {
-                    handleFillBriefFromClient(value);
-                    setBriefFromClientId(value);
-                  } else {
-                    setBriefFromClientId('');
-                  }
-                }}
-              >
-                <SelectTrigger className="h-8 text-sm">
-                  <SelectValue placeholder="Selecione um cliente…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {clients.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name || `Cliente ${c.id}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-          <div className="grid gap-2">
-            <div>
-              <Label className="text-xs text-muted-foreground">Nome do site</Label>
-              <Input
-                value={briefForm.site_name}
-                onChange={(e) => setBriefForm((p) => ({ ...p, site_name: e.target.value }))}
-                placeholder="Ex: Minha Marca"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Nicho</Label>
-              <Input
-                value={briefForm.niche}
-                onChange={(e) => setBriefForm((p) => ({ ...p, niche: e.target.value }))}
-                placeholder="Ex: tecnologia, saúde"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Cor primária</Label>
-              <Input
-                value={briefForm.primary_color}
-                onChange={(e) => setBriefForm((p) => ({ ...p, primary_color: e.target.value }))}
-                placeholder="Ex: blue-600, #2563eb"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Cor secundária</Label>
-              <Input
-                value={briefForm.secondary_color}
-                onChange={(e) => setBriefForm((p) => ({ ...p, secondary_color: e.target.value }))}
-                placeholder="Ex: gray-100"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Tom</Label>
-              <Input
-                value={briefForm.tone}
-                onChange={(e) => setBriefForm((p) => ({ ...p, tone: e.target.value }))}
-                placeholder="Ex: profissional, criativo"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Público-alvo</Label>
-              <Input
-                value={briefForm.target_audience}
-                onChange={(e) => setBriefForm((p) => ({ ...p, target_audience: e.target.value }))}
-                placeholder="Ex: pequenos negócios"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Estilo visual</Label>
-              <Select
-                value={briefForm.estilo_visual || '__none__'}
-                onValueChange={(v) => setBriefForm((p) => ({ ...p, estilo_visual: v === '__none__' ? '' : v }))}
-              >
-                <SelectTrigger className="mt-1 h-8 text-sm">
-                  <SelectValue placeholder="Selecione o estilo" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">Nenhum (IA decide)</SelectItem>
-                  <SelectItem value="Minimalista">Minimalista</SelectItem>
-                  <SelectItem value="Corporativo">Corporativo</SelectItem>
-                  <SelectItem value="Criativo">Criativo</SelectItem>
-                  <SelectItem value="Bold/Impacto">Bold / Impacto</SelectItem>
-                  <SelectItem value="Elegante">Elegante</SelectItem>
-                  <SelectItem value="Moderno">Moderno</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Observações</Label>
-              <Textarea
-                value={briefForm.notes}
-                onChange={(e) => setBriefForm((p) => ({ ...p, notes: e.target.value }))}
-                placeholder="Outras preferências..."
-                className="mt-1 text-sm min-h-[60px]"
-              />
-            </div>
-          </div>
-          <Button size="sm" onClick={() => onSaveBrief(briefForm)} className="shrink-0 w-fit">
-            Salvar brief
-          </Button>
-        </div>
+        <SiteBriefFormSection projectBrief={projectBrief} onSaveBrief={onSaveBrief} clients={clients} />
       ) : activeTab === 'sections' ? (
         <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-hidden">
           <Label className="text-sm font-medium shrink-0">Ordem das seções</Label>

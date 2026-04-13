@@ -5,8 +5,9 @@ import React, { memo, useMemo } from 'react';
     import { BrainCircuit, Loader2 } from 'lucide-react';
     import { supabase } from '@/lib/customSupabaseClient';
     import { useToast } from '@/components/ui/use-toast';
+    import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
-    const PlanningNode = memo(({ data, id }) => {
+    const PlanningNode = memo(({ data, id, selected }) => {
       const { onUpdateNodeData, inputData, selectedPlanningId, plannings } = data;
       const { toast } = useToast();
 
@@ -47,9 +48,12 @@ import React, { memo, useMemo } from 'react';
       return (
         <Card className="w-64 border-2 border-purple-500/50 shadow-lg">
           <Handle type="target" position={Position.Left} className="!bg-purple-500" />
-          <CardHeader className="flex-row items-center space-x-2 p-3 bg-purple-500/10">
-            <BrainCircuit className="w-5 h-5 text-purple-500" />
-            <CardTitle className="text-base">Planejamento</CardTitle>
+          <CardHeader className="flex flex-row items-center gap-2 p-3 bg-purple-500/10 min-w-0">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <BrainCircuit className="w-5 h-5 shrink-0 text-purple-500" />
+              <CardTitle className="text-base truncate">Planejamento</CardTitle>
+            </div>
+            <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
           </CardHeader>
           <CardContent className="p-3">
             <Select onValueChange={handlePlanningChange} value={selectedPlanningId} disabled={isDisabled || filteredPlannings.length === 0}>

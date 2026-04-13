@@ -146,8 +146,12 @@ const ClientForm = ({ client, onSave, onCancel }) => {
             </DrawerDescription>
         </DrawerHeader>
         <div className="flex flex-1 overflow-hidden min-h-0 px-6 pb-4">
-          {/* Formulário à esquerda */}
-          <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col flex-grow overflow-hidden pr-4 border-r w-[60%] min-h-0">
+          {/* Formulário à esquerda — stopPropagation evita que o Vaul capture o pointer e dê blur no input ao soltar (scroll no topo). */}
+          <form
+            onSubmit={handleSubmit(onSubmit)}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="flex flex-col flex-grow overflow-hidden pr-4 border-r w-[60%] min-h-0"
+          >
             <ScrollArea className="flex-1 min-h-0 pr-4 -mr-4">
                 <div className="space-y-6 pb-6">
                     {renderField('name', 'Nome do Cliente', 'input', 'Ex: Empresa do Josias')}
@@ -192,7 +196,10 @@ const ClientForm = ({ client, onSave, onCancel }) => {
           </form>
 
           {/* Chat com IA à direita */}
-          <div className="w-[40%] flex-shrink-0 min-h-0 overflow-hidden">
+          <div
+            className="w-[40%] flex-shrink-0 min-h-0 overflow-hidden"
+            onPointerDown={(e) => e.stopPropagation()}
+          >
             <ClientOnboardingAssistant
               formState={formValues}
               setValue={handleSetValue}

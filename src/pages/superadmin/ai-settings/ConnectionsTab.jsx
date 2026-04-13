@@ -10,6 +10,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/lib/customSupabaseClient';
+import { useDebounce } from '@/hooks/use-debounce';
+import {
+  compareOpenRouterLlmModels,
+  isOpenRouterTextChatModel,
+  normalizeOpenRouterModelsList,
+  toOpenRouterIdNameList,
+} from '@/lib/openRouterModels';
 
 const providerOptions = ['OpenAI', 'Groq', 'Mistral', 'OpenRouter', 'Claude', 'Gemini', 'Grok'];
 
@@ -27,6 +34,7 @@ const ConnectionsTab = () => {
     default_model: 'gpt-4o',
     api_url: ''
   });
+  const debouncedApiKey = useDebounce(formData.api_key, 500);
 
   const fetchIntegrations = useCallback(async () => {
     const { data, error } = await supabase
@@ -67,31 +75,40 @@ const ConnectionsTab = () => {
 
   useEffect(() => {
     const fetchOpenRouterModels = async () => {
-      if (formData.provider === 'OpenRouter') {
-        setIsLoadingModels(true);
+      if (formData.provider !== 'OpenRouter') {
         setOpenRouterModels([]);
-        try {
-          const { data, error } = await supabase.functions.invoke('get-openrouter-models');
-          if (error) throw error;
-          setOpenRouterModels(data || []);
-        } catch (error) {
-          toast({
-            title: "Erro ao buscar modelos",
-            description: "Não foi possível carregar a lista de modelos do OpenRouter.",
-            variant: "destructive",
-          });
-        } finally {
-          setIsLoadingModels(false);
-        }
-      } else {
+        return;
+      }
+      if (!debouncedApiKey?.trim()) {
         setOpenRouterModels([]);
+        setIsLoadingModels(false);
+        return;
+      }
+      setIsLoadingModels(true);
+      setOpenRouterModels([]);
+      try {
+        const { data, error } = await supabase.functions.invoke('get-openrouter-models', {
+          body: { apiKey: debouncedApiKey.trim() },
+        });
+        if (error) throw error;
+        const list = normalizeOpenRouterModelsList(data).filter(isOpenRouterTextChatModel);
+        setOpenRouterModels(toOpenRouterIdNameList(list).sort(compareOpenRouterLlmModels));
+      } catch (error) {
+        toast({
+          title: "Erro ao buscar modelos",
+          description: "Não foi possível carregar a lista de modelos do OpenRouter.",
+          variant: "destructive",
+        });
+        setOpenRouterModels([]);
+      } finally {
+        setIsLoadingModels(false);
       }
     };
 
     if (isDialogOpen) {
       fetchOpenRouterModels();
     }
-  }, [formData.provider, isDialogOpen]);
+  }, [formData.provider, isDialogOpen, debouncedApiKey]);
 
   const handleProviderChange = (value) => {
     const newFormData = { ...formData, provider: value, default_model: '' };
@@ -241,7 +258,7 @@ const ConnectionsTab = () => {
                   <Select
                     onValueChange={(value) => setFormData({ ...formData, default_model: value })}
                     value={formData.default_model}
-                    disabled={isLoadingModels || openRouterModels.length === 0}
+                    disabled={isLoadingModels || !debouncedApiKey?.trim() || openRouterModels.length === 0}
                   >
                     <SelectTrigger id="default_model" className="w-full glass-effect border-white/20 text-white">
                       {isLoadingModels ? (

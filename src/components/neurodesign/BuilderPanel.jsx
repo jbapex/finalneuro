@@ -5,16 +5,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { useToast } from '@/components/ui/use-toast';
 import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
 import { ZoneGrid } from '@/components/neurodesign/ZoneGrid';
-import { Sparkles, Copy, Upload, X } from 'lucide-react';
+import { Sparkles, Copy, Upload, X, Save, MapPin, Bot, Brain } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
-import { neuroDesignDefaultConfig } from '@/lib/neurodesign/defaultConfig';
+import { neuroDesignDefaultConfig, mergeNeuroDesignDefaults } from '@/lib/neurodesign/defaultConfig';
+import { getLogoUrlForIntegration } from '@/lib/llmIntegrationLogo';
+import { NeuroDesignFontPicker } from '@/components/neurodesign/NeuroDesignFontPicker';
 
 const DIMENSIONS = [
   { value: '1:1', label: '1:1 Feed' },
@@ -34,16 +45,20 @@ const SHOT_TYPES = [
 ];
 const STYLE_TAGS = ['clássico', 'formal', 'elegante', 'institucional', 'tecnológico', 'minimalista', 'criativo'];
 
-const VALUE_SAME_AS_BLOCK = '__block__';
-const VALUE_FONT_SYSTEM = '__default__';
+const LOGO_POSITION_LABELS = {
+  '': 'Automático',
+  'top-left': 'Superior esquerdo',
+  'top-center': 'Superior centro',
+  'top-right': 'Superior direito',
+  'center-left': 'Meio esquerda',
+  center: 'Centro',
+  'center-right': 'Meio direita',
+  'bottom-left': 'Inferior esquerdo',
+  'bottom-center': 'Rodapé centro',
+  'bottom-right': 'Inferior direito',
+};
 
-const TEXT_FONTS = [
-  { value: VALUE_FONT_SYSTEM, label: 'Sistema decide' },
-  { value: 'sans', label: 'Sans serifa' },
-  { value: 'serif', label: 'Serifa' },
-  { value: 'bold', label: 'Negrito' },
-  { value: 'modern', label: 'Moderno' },
-];
+const VALUE_SAME_AS_BLOCK = '__block__';
 
 const TEXT_SHAPE_STYLES = [
   { value: 'rounded_rectangle', label: 'Retângulo arredondado' },
@@ -100,10 +115,42 @@ function buildWizardMessageContent(text, imagePublicUrl) {
 
 const defaultConfig = neuroDesignDefaultConfig;
 
-const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate, isGenerating, onFillFromPrompt, hasLlmConnection, isFillingFromPrompt, selectedLlmId, seedFillPrompt }) => {
+/** Mesmo visual que o seletor do Chat IA: círculo primary/10 + logo resolvida por modelo/provedor. */
+function FillWithAiLlmMenuLogo({ connection, logosMap }) {
+  const [broken, setBroken] = useState(false);
+  const url = getLogoUrlForIntegration(logosMap, connection);
+  return (
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10">
+      {url && !broken ? (
+        <img src={url} alt="" className="h-full w-full object-contain" onError={() => setBroken(true)} />
+      ) : (
+        <Brain className="h-3.5 w-3.5 text-primary" />
+      )}
+    </span>
+  );
+}
+
+const BuilderPanel = ({
+  project,
+  config,
+  setConfig,
+  imageConnections,
+  onGenerate,
+  isGenerating,
+  onFillFromPrompt,
+  hasLlmConnection,
+  isFillingFromPrompt,
+  selectedLlmId,
+  /** Conexões Minha IA com `text_generation` — para escolher qual LLM usar em Preencher com IA / wizard */
+  llmConnections = [],
+  onSelectLlmId,
+  seedFillPrompt,
+  embeddedSaveMode,
+  onSaveAndBack,
+}) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [localConfig, setLocalConfig] = useState(config || defaultConfig());
+  const [localConfig, setLocalConfig] = useState(() => mergeNeuroDesignDefaults(config));
   const [fillPromptInput, setFillPromptInput] = useState('');
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
@@ -130,7 +177,7 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
   const [logosByProvider, setLogosByProvider] = useState({});
 
   React.useEffect(() => {
-    const next = config || defaultConfig();
+    const next = mergeNeuroDesignDefaults(config);
     const refUrls = next.style_reference_urls || [];
     const refInstr = next.style_reference_instructions || [];
     if (refUrls.length > 0 && refInstr.length === 0 && next.style_reference_instruction) {
@@ -505,11 +552,55 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
     );
   }
 
+  const fillWithAiActiveLlm =
+    hasLlmConnection && llmConnections.length > 0
+      ? llmConnections.find((c) => String(c.id) === String(selectedLlmId)) || llmConnections[0]
+      : null;
+  const fillWithAiLlmButtonTitle = fillWithAiActiveLlm
+    ? `Modelo de texto: ${fillWithAiActiveLlm.name}`
+    : 'Escolher modelo de texto';
+
   return (
     <div className="p-4 space-y-6">
       {typeof onFillFromPrompt === 'function' && (
         <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-2">
-          <Label className="text-sm font-medium">Preencher com IA</Label>
+          <div className="flex items-center justify-between gap-2">
+            <Label className="text-sm font-medium">Preencher com IA</Label>
+            {hasLlmConnection && llmConnections.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="default"
+                    size="icon"
+                    className="h-9 w-9 shrink-0 rounded-full bg-primary p-0 text-primary-foreground shadow-md shadow-primary/35 transition-all hover:bg-primary/90 hover:shadow-lg hover:shadow-primary/45 focus-visible:ring-2 focus-visible:ring-primary/50 disabled:opacity-50"
+                    title={fillWithAiLlmButtonTitle}
+                    disabled={!onSelectLlmId}
+                    aria-label="Escolher modelo de texto para Preencher com IA"
+                  >
+                    <Bot className="h-[1.05rem] w-[1.05rem]" strokeWidth={2} />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-[min(calc(100vw-2rem),18rem)]">
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Modelo de texto</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {llmConnections.map((c) => {
+                    const isActive = fillWithAiActiveLlm && String(c.id) === String(fillWithAiActiveLlm.id);
+                    return (
+                      <DropdownMenuItem
+                        key={c.id}
+                        className={`cursor-pointer items-center gap-2 py-2 text-xs focus:bg-accent ${isActive ? 'bg-accent/60' : ''}`}
+                        onSelect={() => onSelectLlmId?.(Number(c.id))}
+                      >
+                        <FillWithAiLlmMenuLogo connection={c} logosMap={logosByProvider} />
+                        <span className="min-w-0 flex-1 truncate font-medium leading-snug">{c.name}</span>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
           <p className="text-xs text-muted-foreground">Cole um prompt ou brief de outra IA e preencha os campos abaixo automaticamente.</p>
           <Textarea
             placeholder="Cole aqui o prompt ou descrição da arte que deseja criar..."
@@ -776,14 +867,11 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
               </div>
               <div>
                 <Label className="text-xs">Fonte (opcional)</Label>
-                <Select value={(localConfig.headline_font === '' || localConfig.headline_font == null) ? VALUE_FONT_SYSTEM : localConfig.headline_font} onValueChange={(v) => update('headline_font', v === VALUE_FONT_SYSTEM ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-xs">
-                    <SelectValue placeholder="Sistema decide" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover text-popover-foreground">
-                    {TEXT_FONTS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <NeuroDesignFontPicker
+                  id="nd-headline-font"
+                  value={localConfig.headline_font ?? ''}
+                  onChange={(v) => update('headline_font', v)}
+                />
               </div>
               <div>
                 <Label className="text-xs">Cor (opcional)</Label>
@@ -828,14 +916,11 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
               </div>
               <div>
                 <Label className="text-xs">Fonte (opcional)</Label>
-                <Select value={(localConfig.subheadline_font === '' || localConfig.subheadline_font == null) ? VALUE_FONT_SYSTEM : localConfig.subheadline_font} onValueChange={(v) => update('subheadline_font', v === VALUE_FONT_SYSTEM ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-xs">
-                    <SelectValue placeholder="Sistema decide" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover text-popover-foreground">
-                    {TEXT_FONTS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <NeuroDesignFontPicker
+                  id="nd-subheadline-font"
+                  value={localConfig.subheadline_font ?? ''}
+                  onChange={(v) => update('subheadline_font', v)}
+                />
               </div>
               <div>
                 <Label className="text-xs">Cor (opcional)</Label>
@@ -880,14 +965,11 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
               </div>
               <div>
                 <Label className="text-xs">Fonte (opcional)</Label>
-                <Select value={(localConfig.cta_font === '' || localConfig.cta_font == null) ? VALUE_FONT_SYSTEM : localConfig.cta_font} onValueChange={(v) => update('cta_font', v === VALUE_FONT_SYSTEM ? '' : v)}>
-                  <SelectTrigger className="mt-1 h-8 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-xs">
-                    <SelectValue placeholder="Sistema decide" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-popover text-popover-foreground">
-                    {TEXT_FONTS.map((f) => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <NeuroDesignFontPicker
+                  id="nd-cta-font"
+                  value={localConfig.cta_font ?? ''}
+                  onChange={(v) => update('cta_font', v)}
+                />
               </div>
               <div>
                 <Label className="text-xs">Cor (opcional)</Label>
@@ -937,14 +1019,22 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
 
       <div>
         <Label>Logo na arte</Label>
-        <p className="text-xs text-muted-foreground mt-1">A logo anexa será incluída na imagem gerada em posição adequada.</p>
+        <p className="text-xs text-muted-foreground mt-1">
+          A logo anexa será incluída na imagem. Use <span className="font-medium text-foreground">Posição da logo</span> para escolher o canto ou a zona (ou deixe automático).
+        </p>
         <div className="flex gap-2 flex-wrap items-center mt-2">
           {localConfig.logo_url ? (
             <div className="relative w-14 h-14 rounded overflow-hidden bg-muted shrink-0">
               <img src={localConfig.logo_url} alt="Logo" className="w-full h-full object-contain" />
               <button
             type="button"
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); update('logo_url', ''); }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const next = { ...localConfig, logo_url: '', logo_position: '' };
+              setLocalConfig(next);
+              setConfig?.(next);
+            }}
             className="absolute top-0 right-0 z-10 flex items-center justify-center min-w-[36px] min-h-[36px] bg-foreground/80 hover:bg-foreground text-background rounded-bl cursor-pointer touch-manipulation"
             aria-label="Remover logo"
           >
@@ -956,6 +1046,32 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
             <Upload className="h-4 w-4" />
             <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUpload('logo', e.target.files)} />
           </label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 text-xs shrink-0"
+                disabled={!localConfig.logo_url}
+                title={!localConfig.logo_url ? 'Envie uma logo primeiro' : undefined}
+              >
+                <MapPin className="h-3.5 w-3.5 mr-1.5" />
+                Posição da logo
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto max-w-[min(100vw-2rem,20rem)]" align="start">
+              <p className="text-xs font-medium mb-2">Onde colocar na arte</p>
+              <p className="text-xs text-muted-foreground mb-2">
+                Atual: {LOGO_POSITION_LABELS[localConfig.logo_position] ?? LOGO_POSITION_LABELS['']}
+              </p>
+              <ZoneGrid
+                value={localConfig.logo_position || ''}
+                onChange={(z) => update('logo_position', z)}
+                aria-label="Zona da logo na arte"
+              />
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -1126,6 +1242,11 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
             />
           </div>
         ))}
+        {(localConfig.style_reference_urls || []).length > 0 && (
+          <p className="text-xs text-muted-foreground mt-2">
+            Ao preencher o campo acima, a geração prioriza a referência e essas instruções (fontes, layout, estética) em relação a zonas de texto, fontes e cores do formulário.
+          </p>
+        )}
       </div>
 
       <div>
@@ -1152,35 +1273,54 @@ const BuilderPanel = ({ project, config, setConfig, imageConnections, onGenerate
       </div>
 
       <div className="flex gap-2">
-        {(() => {
-          const hasConnection = localConfig.user_ai_connection_id && localConfig.user_ai_connection_id !== 'none';
-          const isFreeMode = (localConfig.text_mode || 'structured') === 'free';
-          const hasTextFilled = !localConfig.text_enabled || (isFreeMode
-            ? Boolean((localConfig.custom_text || '').trim() || localConfig.use_reference_image_text)
-            : Boolean(
-            (localConfig.headline_h1 || '').trim() ||
-            (localConfig.subheadline_h2 || '').trim() ||
-            (localConfig.cta_button_text || '').trim()
-              ));
-          const disabled = isGenerating || !hasConnection || !hasTextFilled;
-          const title = !hasConnection
-            ? 'Selecione uma conexão de imagem para gerar'
-            : !hasTextFilled
-              ? isFreeMode
-                ? "Com 'Texto na imagem' em modo livre, preencha o texto ou ative 'Usar texto da imagem de referência'"
-                : "Com 'Texto na imagem' ativado, preencha pelo menos um campo: Título H1, Subtítulo H2 ou Texto do botão CTA"
-              : undefined;
-          return (
-        <Button
-          className="flex-1 bg-primary hover:bg-primary/90"
-          onClick={() => onGenerate?.(localConfig)}
-          disabled={disabled}
-          title={title}
-        >
-          {isGenerating ? <span className="animate-pulse">Gerando...</span> : <><Sparkles className="h-4 w-4 mr-2" /> Gerar Imagem</>}
-        </Button>
-          );
-        })()}
+        {embeddedSaveMode ? (
+          <Button
+            type="button"
+            className="flex-1 bg-primary hover:bg-primary/90"
+            onClick={() => onSaveAndBack?.(localConfig)}
+          >
+            <Save className="h-4 w-4 mr-2" />
+            Salvar e voltar
+          </Button>
+        ) : (
+          (() => {
+            const hasConnection = localConfig.user_ai_connection_id && localConfig.user_ai_connection_id !== 'none';
+            const isFreeMode = (localConfig.text_mode || 'structured') === 'free';
+            const hasTextFilled =
+              !localConfig.text_enabled ||
+              (isFreeMode
+                ? Boolean((localConfig.custom_text || '').trim() || localConfig.use_reference_image_text)
+                : Boolean(
+                    (localConfig.headline_h1 || '').trim() ||
+                      (localConfig.subheadline_h2 || '').trim() ||
+                      (localConfig.cta_button_text || '').trim()
+                  ));
+            const disabled = isGenerating || !hasConnection || !hasTextFilled;
+            const title = !hasConnection
+              ? 'Selecione uma conexão de imagem para gerar'
+              : !hasTextFilled
+                ? isFreeMode
+                  ? "Com 'Texto na imagem' em modo livre, preencha o texto ou ative 'Usar texto da imagem de referência'"
+                  : "Com 'Texto na imagem' ativado, preencha pelo menos um campo: Título H1, Subtítulo H2 ou Texto do botão CTA"
+                : undefined;
+            return (
+              <Button
+                className="flex-1 bg-primary hover:bg-primary/90"
+                onClick={() => onGenerate?.(localConfig)}
+                disabled={disabled}
+                title={title}
+              >
+                {isGenerating ? (
+                  <span className="animate-pulse">Gerando...</span>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" /> Gerar Imagem
+                  </>
+                )}
+              </Button>
+            );
+          })()
+        )}
         <Button variant="outline" size="icon" onClick={() => setConfig?.({ ...localConfig, id: undefined })} title="Duplicar configuração">
           <Copy className="h-4 w-4" />
         </Button>

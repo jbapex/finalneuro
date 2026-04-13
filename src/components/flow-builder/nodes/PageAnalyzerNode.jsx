@@ -9,8 +9,9 @@ import { SearchCode, Clipboard, Check, Eye } from 'lucide-react';
 import { supabase } from '@/lib/customSupabaseClient';
 import { useToast } from '@/components/ui/use-toast';
 import ContentViewModal from '@/components/flow-builder/modals/ContentViewModal';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 
-const PageAnalyzerNode = memo(({ id, data }) => {
+const PageAnalyzerNode = memo(({ id, data, selected }) => {
   const { onUpdateNodeData, output, analysisId: initialAnalysisId } = data;
   const { toast } = useToast();
   const [url, setUrl] = useState('');
@@ -152,9 +153,12 @@ const PageAnalyzerNode = memo(({ id, data }) => {
   return (
     <Card className="w-80 border-2 border-cyan-500/50 shadow-lg">
       <Handle type="target" position={Position.Left} className="!bg-cyan-500" />
-      <CardHeader className="flex-row items-center space-x-2 p-3 bg-cyan-500/10">
-        <SearchCode className="w-5 h-5 text-cyan-500" />
-        <CardTitle className="text-base">Analisador de Página</CardTitle>
+      <CardHeader className="flex flex-row items-center gap-2 p-3 bg-cyan-500/10 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <SearchCode className="w-5 h-5 shrink-0 text-cyan-500" />
+          <CardTitle className="text-base truncate">Analisador de Página</CardTitle>
+        </div>
+        <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
       </CardHeader>
       <CardContent className="p-3 space-y-3">
         {!isProcessing && !analysisResult && (

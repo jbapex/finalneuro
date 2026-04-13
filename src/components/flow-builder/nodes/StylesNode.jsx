@@ -1,5 +1,6 @@
 import React, { memo, useCallback } from 'react';
 import { Handle, Position } from 'reactflow';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Slider } from '@/components/ui/slider';
@@ -8,7 +9,7 @@ import { Type } from 'lucide-react';
 
 const STYLE_TAGS = ['clássico', 'formal', 'elegante', 'institucional', 'tecnológico', 'minimalista', 'criativo'];
 
-const StylesNode = memo(({ data, id }) => {
+const StylesNode = memo(({ data, id, selected }) => {
   const { onUpdateNodeData } = data;
   const attrs = data.visual_attributes ?? {};
   const style_tags = Array.isArray(attrs.style_tags) ? attrs.style_tags : [];
@@ -37,9 +38,12 @@ const StylesNode = memo(({ data, id }) => {
 
   return (
     <Card className="w-64 border-2 border-emerald-500/50 shadow-lg">
-      <CardHeader className="flex-row items-center space-x-2 p-3 bg-emerald-500/10">
-        <Type className="w-5 h-5 text-emerald-500" />
-        <CardTitle className="text-base">Estilos</CardTitle>
+      <CardHeader className="flex flex-row items-center gap-2 p-3 bg-emerald-500/10 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Type className="w-5 h-5 shrink-0 text-emerald-500" />
+          <CardTitle className="text-base truncate">Estilos</CardTitle>
+        </div>
+        <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
       </CardHeader>
       <CardContent className="p-3 space-y-3">
         <div className="space-y-1">

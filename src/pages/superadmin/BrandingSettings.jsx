@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Image as ImageIcon, Upload, Loader2 } from 'lucide-react';
+import { Image as ImageIcon, Upload, Loader2, BarChart3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,8 @@ import { supabase } from '@/lib/customSupabaseClient';
 import { toast } from '@/components/ui/use-toast';
 import { fetchSystemBranding } from '@/lib/systemBranding';
 import LogoCropDialog from '@/components/superadmin/branding/LogoCropDialog';
+import { Input } from '@/components/ui/input';
+import { normalizeMetaPixelId } from '@/lib/metaPixel';
 
 const BUCKET = 'system_branding';
 const BRANDING_ID = 'neuro_apice';
@@ -18,8 +20,10 @@ export default function BrandingSettings() {
   const [iconLogoUrl, setIconLogoUrl] = useState('');
   const [iconLightLogoUrl, setIconLightLogoUrl] = useState('');
   const [iconDarkLogoUrl, setIconDarkLogoUrl] = useState('');
+  const [metaPixelId, setMetaPixelId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
+  const [savingPixel, setSavingPixel] = useState(false);
 
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [pendingVariant, setPendingVariant] = useState(null);
@@ -40,6 +44,7 @@ export default function BrandingSettings() {
       setIconLogoUrl(result.iconLogoUrl || '');
       setIconLightLogoUrl(result.iconLightLogoUrl || '');
       setIconDarkLogoUrl(result.iconDarkLogoUrl || '');
+      setMetaPixelId(result.metaPixelId || '');
     } finally {
       setLoading(false);
     }
@@ -192,6 +197,40 @@ export default function BrandingSettings() {
       });
     } finally {
       setSaving(null);
+    }
+  };
+
+  const saveMetaPixel = async () => {
+    const normalized = normalizeMetaPixelId(metaPixelId);
+    setSavingPixel(true);
+    try {
+      const { error } = await supabase
+        .from('system_branding')
+        .upsert(
+          {
+            id: BRANDING_ID,
+            meta_pixel_id: normalized || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+
+      if (error) throw error;
+      setMetaPixelId(normalized);
+      toast({
+        title: 'Pixel Meta atualizado',
+        description: normalized
+          ? 'O ID foi guardado. Novas visitas já enviam eventos para a Meta.'
+          : 'Pixel removido da base. Pode usar só VITE_META_PIXEL_ID no servidor, se configurado.',
+      });
+    } catch (err) {
+      toast({
+        title: 'Erro ao guardar Pixel',
+        description: err?.message || 'Verifique permissões e se a migração meta_pixel foi aplicada.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingPixel(false);
     }
   };
 
@@ -482,6 +521,41 @@ export default function BrandingSettings() {
           </p>
         </CardContent>
       </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Meta Pixel (Facebook)
+          </CardTitle>
+          <CardDescription>
+            ID numérico do pixel (Gerenciador de Eventos da Meta). Aplica-se a <strong>toda</strong> a aplicação: landing{' '}
+            <code className="rounded bg-muted px-1">/fundador</code>, login e área logada. Cada mudança de página envia{' '}
+            <code className="rounded bg-muted px-1">PageView</code>. Se deixar vazio aqui, pode definir fallback no ambiente com{' '}
+            <code className="rounded bg-muted px-1">VITE_META_PIXEL_ID</code> no build.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="meta-pixel-id">ID do Pixel</Label>
+            <Input
+              id="meta-pixel-id"
+              placeholder="Ex.: 123456789012345"
+              value={metaPixelId}
+              onChange={(e) => setMetaPixelId(e.target.value)}
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              Cole só os números do ID. Caracteres não numéricos são ignorados ao guardar.
+            </p>
+          </div>
+          <Button type="button" onClick={saveMetaPixel} disabled={savingPixel}>
+            {savingPixel ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Guardar Pixel Meta
+          </Button>
+        </CardContent>
+      </Card>
+
       <LogoCropDialog
         open={cropDialogOpen && !!pendingFile}
         onClose={handleCropDialogClose}

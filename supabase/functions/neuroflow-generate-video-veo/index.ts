@@ -45,7 +45,12 @@ serve(async (req) => {
     const resolution = String(body?.resolution || "720p").trim(); // "720p" | "1080p" | "4k"
     const aspectRatio = String(body?.aspectRatio || "16:9").trim(); // "16:9" | "9:16"
     const durationSecondsRaw = Number(body?.durationSeconds ?? body?.duration_seconds ?? 4);
-    const durationSeconds = Number.isFinite(durationSecondsRaw) && durationSecondsRaw > 0 ? Math.round(durationSecondsRaw) : 4;
+    let durationSeconds = Number.isFinite(durationSecondsRaw) && durationSecondsRaw > 0 ? Math.round(durationSecondsRaw) : 4;
+    // Veo 3.x: 1080p exige exatamente 8s (INVALID_ARGUMENT: "Resolution 1080p requires duration seconds to be 8").
+    const resLower = resolution.toLowerCase();
+    if (resLower === "1080p" && durationSeconds !== 8) {
+      durationSeconds = 8;
+    }
 
     const initialFrame = body?.initialFrame ?? body?.initial_frame ?? null;
     const finalFrame = body?.finalFrame ?? body?.final_frame ?? null;
@@ -69,7 +74,7 @@ serve(async (req) => {
     const baseUrl = "https://generativelanguage.googleapis.com/v1beta";
     const genUrl = `${baseUrl}/models/${encodeURIComponent(videoModel)}:predictLongRunning`;
     const pollIntervalMs = 10000; // Veo often takes ~11s min; poll every 10s.
-    const maxPollMs = 6 * 60 * 1000; // up to 6 minutes per docs.
+    const maxPollMs = 10 * 60 * 1000; // Veo pode demorar vários minutos
 
     async function generateOneVideo(): Promise<string> {
       type PayloadVariant = { kind: "instances_only" | "snake" | "camel" | "params_config" | "bytes_b64" | "none" };
@@ -149,6 +154,17 @@ serve(async (req) => {
         if (!startRes.ok) {
           const msg = String(startText || "");
           const low = msg.toLowerCase();
+          // Não é “formato de frame”: conta/região/modelo não oferece este caso de uso (comum com Veo preview).
+          const isUseCaseNotSupported =
+            low.includes("use case is currently not supported") ||
+            low.includes("not supported.  please refer to gemini api") ||
+            low.includes("not supported. please refer to gemini") ||
+            low.includes("current model offering");
+          if (isUseCaseNotSupported) {
+            throw new Error(
+              "VEO_USE_CASE_BLOCKED: " + msg.slice(0, 800),
+            );
+          }
           const isInlineRejected =
             low.includes("inlinedata") ||
             low.includes("inline_data") ||
@@ -236,6 +252,14 @@ serve(async (req) => {
         } catch (e) {
           lastErr = e;
           const msg = String(e instanceof Error ? e.message : e);
+          if (msg.includes("VEO_USE_CASE_BLOCKED")) {
+            throw new Error(
+              "A Google recusou este pedido: o teu projeto/conta ou região ainda não tem este caso de uso (geração de vídeo Veo) ativo no Gemini API, ou o modelo não está disponível para a chave. " +
+                "Confirma em https://ai.google.dev/gemini-api/docs/video e no Google AI Studio (API key, faturamento, lista de modelos). " +
+                "Isto não é só “formato de frame”. Resposta: " +
+                msg.replace(/^VEO_USE_CASE_BLOCKED:\s*/, "").slice(0, 600),
+            );
+          }
           if (!msg.includes("INLINE_REJECTED")) {
             throw e;
           }
@@ -245,7 +269,8 @@ serve(async (req) => {
       if (hasFrames) {
         const googleMsg = lastErr instanceof Error ? lastErr.message : String(lastErr);
         throw new Error(
-          "O modelo selecionado não aceita imagem inicial/final. Para transição entre suas imagens, use um modelo Veo 3.1 (ex.: veo-3.1-generate-preview) na configuração da API. Detalhe da API: " + googleMsg.slice(0, 300)
+          "O modelo ou o formato de imagem inicial/final não foi aceite após várias tentativas. Usa um modelo Veo 3.1 com suporte a frames (ex.: veo-3.1-generate-preview) em Configurar API. Se o erro falar de quota ou billing, resolve isso na Google Cloud / AI Studio. Detalhe: " +
+            googleMsg.slice(0, 400),
         );
       }
       throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

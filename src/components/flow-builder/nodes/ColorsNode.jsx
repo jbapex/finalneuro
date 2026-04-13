@@ -1,11 +1,12 @@
 import React, { memo, useCallback } from 'react';
 import { Handle, Position } from 'reactflow';
+import { FlowNodeHeaderDelete } from '@/components/flow-builder/FlowNodeHeaderDelete';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Palette } from 'lucide-react';
 
-const ColorsNode = memo(({ data, id }) => {
+const ColorsNode = memo(({ data, id, selected }) => {
   const { onUpdateNodeData } = data;
   const ambient = data.ambient_color ?? '';
   const rim = data.rim_light_color ?? '';
@@ -28,9 +29,12 @@ const ColorsNode = memo(({ data, id }) => {
 
   return (
     <Card className="w-64 border-2 border-rose-500/50 shadow-lg">
-      <CardHeader className="flex-row items-center space-x-2 p-3 bg-rose-500/10">
-        <Palette className="w-5 h-5 text-rose-500" />
-        <CardTitle className="text-base">Cores</CardTitle>
+      <CardHeader className="flex flex-row items-center gap-2 p-3 bg-rose-500/10 min-w-0">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <Palette className="w-5 h-5 shrink-0 text-rose-500" />
+          <CardTitle className="text-base truncate">Cores</CardTitle>
+        </div>
+        <FlowNodeHeaderDelete nodeId={id} onRemoveNode={data.onRemoveNode} selected={selected} />
       </CardHeader>
       <CardContent className="p-3 space-y-2">
         <div className="space-y-1">

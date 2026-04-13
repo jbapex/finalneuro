@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
+import { MODULE_GENERATOR_CATEGORIES, getModuleGeneratorCategoryIds } from '@/lib/modules/generatorCategories';
 
 const ModuleForm = ({
   isOpen,
@@ -32,6 +33,7 @@ const ModuleForm = ({
         use_client: false,
         use_campaign: true,
         use_complementary_text: true,
+        generator_categories: ['geral'],
       },
       suggested_module_ids: [],
     });
@@ -47,6 +49,26 @@ const ModuleForm = ({
         [key]: value,
       },
     }));
+  };
+
+  const toggleGeneratorCategory = (catId) => {
+    setFormData((prev) => {
+      const current = getModuleGeneratorCategoryIds(prev.config);
+      const next = new Set(current);
+      if (next.has(catId)) {
+        if (next.size <= 1) return prev;
+        next.delete(catId);
+      } else {
+        next.add(catId);
+      }
+      return {
+        ...prev,
+        config: {
+          ...prev.config,
+          generator_categories: Array.from(next),
+        },
+      };
+    });
   };
 
   const handleSuggestedModuleChange = (moduleId) => {
@@ -125,6 +147,30 @@ const ModuleForm = ({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-3 p-4 border rounded-md">
+            <h4 className="font-semibold text-sm">Categorias no Gerador de Conteúdo</h4>
+            <p className="text-xs text-muted-foreground">
+              Selecione uma ou mais: o agente aparece em cada filtro escolhido (ex.: vídeo e campanhas).
+            </p>
+            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {MODULE_GENERATOR_CATEGORIES.map((cat) => {
+                const selected = getModuleGeneratorCategoryIds(formData.config).includes(cat.id);
+                return (
+                  <div key={cat.id} className="flex items-center space-x-2">
+                    <Checkbox
+                      id={`gen-cat-${cat.id}`}
+                      checked={selected}
+                      onCheckedChange={() => toggleGeneratorCategory(cat.id)}
+                    />
+                    <Label htmlFor={`gen-cat-${cat.id}`} className="text-sm font-normal leading-tight cursor-pointer">
+                      {cat.label}
+                    </Label>
+                  </div>
+                );
+              })}
+            </div>
           </div>
           
           {isCustom && (

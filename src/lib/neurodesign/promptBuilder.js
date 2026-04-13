@@ -1,3 +1,5 @@
+import { getNeuroDesignFontPromptLine } from './fontPrompt.js';
+
 /**
  * Monta o prompt estruturado para geração de imagem a partir da DesignConfig.
  * Usado pela Edge Function; o client envia a config e a EF chama buildPrompt.
@@ -78,7 +80,13 @@ export function buildPrompt(config) {
       }
       if (customText) {
         textBlockParts.push('OBRIGATÓRIO - TEXTO VISÍVEL NA IMAGEM: A arte deve exibir este texto de forma clara e legível, sem alterar uma letra: "' + customText + '".');
-        if (fontDesc) textBlockParts.push('Fonte/estilo do texto: ' + fontDesc + '.');
+        if (fontDesc) {
+          textBlockParts.push(
+            'PRIORIDADE TIPOGRAFIA — TEXTO LIVRE: ' +
+              fontDesc +
+              '. Aplicar este estilo ou família ao texto acima o mais fielmente possível (formato das letras, peso, personalidade); não usar fonte genérica diferente sem necessidade.',
+          );
+        }
       }
       if (!useRefText && !customText) {
         textBlockParts.push('Não incluir texto, títulos, subtítulos ou botões na imagem (nenhum texto foi definido pelo usuário).');
@@ -112,7 +120,8 @@ export function buildPrompt(config) {
       if (config.text_gradient) textBlockParts.push('O texto deve ter efeito de gradiente (degradê nas letras).');
       if (h1) {
         const f = fieldFont(config, 'headline');
-        if (f && fontLabel[f]) textBlockParts.push(`Fonte do título: ${fontLabel[f]}.`);
+        const fontLine = getNeuroDesignFontPromptLine('título', f);
+        if (fontLine) textBlockParts.push(fontLine);
         const c = fieldColor(config, 'headline');
         if (c) textBlockParts.push(`Cor do título: ${c}.`);
         const sh = fieldShape(config, 'headline');
@@ -120,7 +129,8 @@ export function buildPrompt(config) {
       }
       if (h2) {
         const f = fieldFont(config, 'subheadline');
-        if (f && fontLabel[f]) textBlockParts.push(`Fonte do subtítulo: ${fontLabel[f]}.`);
+        const fontLine = getNeuroDesignFontPromptLine('subtítulo', f);
+        if (fontLine) textBlockParts.push(fontLine);
         const c = fieldColor(config, 'subheadline');
         if (c) textBlockParts.push(`Cor do subtítulo: ${c}.`);
         const sh = fieldShape(config, 'subheadline');
@@ -128,7 +138,8 @@ export function buildPrompt(config) {
       }
       if (cta) {
         const f = fieldFont(config, 'cta');
-        if (f && fontLabel[f]) textBlockParts.push(`Fonte do CTA: ${fontLabel[f]}.`);
+        const fontLine = getNeuroDesignFontPromptLine('CTA', f);
+        if (fontLine) textBlockParts.push(fontLine);
         const c = fieldColor(config, 'cta');
         if (c) textBlockParts.push(`Cor do CTA: ${c}.`);
         const sh = fieldShape(config, 'cta');
@@ -193,7 +204,13 @@ export function buildPrompt(config) {
       if (customText) {
         parts.push('Espaço reservado para texto na composição.');
         parts.push('O texto exibido na imagem deve ser exatamente: "' + customText + '".');
-        if (fontDesc) parts.push('Fonte/estilo do texto: ' + fontDesc + '.');
+        if (fontDesc) {
+          parts.push(
+            'PRIORIDADE TIPOGRAFIA — TEXTO LIVRE: ' +
+              fontDesc +
+              '. Aplicar este estilo ou família ao texto acima o mais fielmente possível (formato das letras, peso, personalidade); não usar fonte genérica diferente sem necessidade.',
+          );
+        }
       }
       if (!useRefText && !customText) parts.push('Não incluir texto, títulos, subtítulos ou botões na imagem (nenhum texto foi definido pelo usuário).');
     } else {
@@ -219,7 +236,8 @@ export function buildPrompt(config) {
       if (config.text_gradient) parts.push('O texto na imagem deve ter efeito de gradiente (degradê nas letras), visível e aplicado ao título e subtítulo.');
       if (h1) {
         const f = fieldFont(config, 'headline');
-        if (f && fontLabel[f]) parts.push(`Fonte do título: ${fontLabel[f]}.`);
+        const fontLine = getNeuroDesignFontPromptLine('título', f);
+        if (fontLine) parts.push(fontLine);
         const c = fieldColor(config, 'headline');
         if (c) parts.push(`Cor do título: ${c}.`);
         const sh = fieldShape(config, 'headline');
@@ -227,7 +245,8 @@ export function buildPrompt(config) {
       }
       if (h2) {
         const f = fieldFont(config, 'subheadline');
-        if (f && fontLabel[f]) parts.push(`Fonte do subtítulo: ${fontLabel[f]}.`);
+        const fontLine = getNeuroDesignFontPromptLine('subtítulo', f);
+        if (fontLine) parts.push(fontLine);
         const c = fieldColor(config, 'subheadline');
         if (c) parts.push(`Cor do subtítulo: ${c}.`);
         const sh = fieldShape(config, 'subheadline');
@@ -235,7 +254,8 @@ export function buildPrompt(config) {
       }
       if (cta) {
         const f = fieldFont(config, 'cta');
-        if (f && fontLabel[f]) parts.push(`Fonte do CTA: ${fontLabel[f]}.`);
+        const fontLine = getNeuroDesignFontPromptLine('CTA', f);
+        if (fontLine) parts.push(fontLine);
         const c = fieldColor(config, 'cta');
         if (c) parts.push(`Cor do CTA: ${c}.`);
         const sh = fieldShape(config, 'cta');

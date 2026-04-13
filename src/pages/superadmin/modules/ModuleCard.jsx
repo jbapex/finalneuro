@@ -6,8 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
+import { getModuleGeneratorCategoryMetas } from '@/lib/modules/generatorCategories';
 
 const ModuleCard = ({ module, index, onEdit, onDelete, onToggleStatus }) => {
+  const categoryMetas = getModuleGeneratorCategoryMetas(module.config);
   return (
     <motion.div
       key={module.id}
@@ -24,7 +27,14 @@ const ModuleCard = ({ module, index, onEdit, onDelete, onToggleStatus }) => {
             <div className="flex items-center space-x-3">
               <Bot className={cn("w-6 h-6 text-muted-foreground", !module.is_active && "opacity-50")} />
               <div>
-                <CardTitle className={cn("text-foreground", !module.is_active && "text-muted-foreground")}>{module.name}</CardTitle>
+                <div className="flex flex-wrap items-center gap-2">
+                  <CardTitle className={cn("text-foreground", !module.is_active && "text-muted-foreground")}>{module.name}</CardTitle>
+                  {categoryMetas.map((meta) => (
+                    <Badge key={meta.id} variant="secondary" className="text-[10px] font-normal shrink-0">
+                      {meta.shortLabel}
+                    </Badge>
+                  ))}
+                </div>
                 <CardDescription className="text-muted-foreground">{module.description}</CardDescription>
               </div>
             </div>

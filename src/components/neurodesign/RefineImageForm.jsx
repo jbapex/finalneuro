@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Loader2, Sparkles, Upload, X, Crop, Type, Eraser, ImageMinus, ImageIcon, MessageSquare } from 'lucide-react';
+import { Loader2, Sparkles, Upload, X, Crop, Type, Eraser, ImageMinus, ImageIcon, MessageSquare, Wand2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,9 +21,9 @@ const REFINE_DIMENSIONS = [
 ];
 
 const REFINE_IMAGE_SIZES = [
-  { value: '1K', label: '1K' },
+  { value: '4K', label: '4K (máxima qualidade)' },
   { value: '2K', label: '2K' },
-  { value: '4K', label: '4K' },
+  { value: '1K', label: '1K (mais rápido)' },
 ];
 
 const SELECTION_ACTIONS = [
@@ -71,7 +71,7 @@ export default function RefineImageForm({
   const [logosByProvider, setLogosByProvider] = useState({});
   const [refineInstruction, setRefineInstruction] = useState('');
   const [refineDimensions, setRefineDimensions] = useState('1:1');
-  const [refineImageSize, setRefineImageSize] = useState('1K');
+  const [refineImageSize, setRefineImageSize] = useState('4K');
   const [referenceArtFile, setReferenceArtFile] = useState(null);
   const [referenceArtPreviewUrl, setReferenceArtPreviewUrl] = useState('');
   const [replacementFile, setReplacementFile] = useState(null);
@@ -236,26 +236,75 @@ export default function RefineImageForm({
     };
   }, [drawStart, drawCurrent]);
 
+  const cropImageToBlob = (im, region) => {
+    const natW = im.naturalWidth;
+    const natH = im.naturalHeight;
+    if (!natW || !natH) return null;
+    const x = Math.floor(region.x * natW);
+    const y = Math.floor(region.y * natH);
+    const w = Math.max(1, Math.floor(region.width * natW));
+    const h = Math.max(1, Math.floor(region.height * natH));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    try {
+      ctx.drawImage(im, x, y, w, h, 0, 0, w, h);
+    } catch {
+      return null;
+    }
+    return new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+    });
+  };
+
   const generateCropBlob = useCallback(async () => {
-    const img = previewImgRef.current;
     const region = selectionRegion;
-    if (!img || !region || !imageUrl) return null;
+    if (!region || !imageUrl) return null;
+
+    const tryWithImage = (im) => cropImageToBlob(im, region);
+
     return new Promise((resolve) => {
       const im = new Image();
       im.crossOrigin = 'anonymous';
-      im.onload = () => {
-        const natW = im.naturalWidth;
-        const natH = im.naturalHeight;
-        const x = Math.floor(region.x * natW);
-        const y = Math.floor(region.y * natH);
-        const w = Math.max(1, Math.floor(region.width * natW));
-        const h = Math.max(1, Math.floor(region.height * natH));
-        const canvas = document.createElement('canvas');
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(im, x, y, w, h, 0, 0, w, h);
-        canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+      im.onload = async () => {
+        let blob = await tryWithImage(im);
+        if (blob) {
+          resolve(blob);
+          return;
+        }
+        if (!/^https?:\/\//i.test(imageUrl)) {
+          resolve(null);
+          return;
+        }
+        try {
+          const res = await fetch(imageUrl, { mode: 'cors', credentials: 'omit', cache: 'no-store' });
+          if (!res.ok) {
+            resolve(null);
+            return;
+          }
+          const buf = await res.blob();
+          const bmp = await createImageBitmap(buf);
+          const canvas = document.createElement('canvas');
+          canvas.width = bmp.width;
+          canvas.height = bmp.height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(bmp, 0, 0);
+          bmp.close();
+          const natW = canvas.width;
+          const natH = canvas.height;
+          const x = Math.floor(region.x * natW);
+          const y = Math.floor(region.y * natH);
+          const w = Math.max(1, Math.floor(region.width * natW));
+          const h = Math.max(1, Math.floor(region.height * natH));
+          const crop = document.createElement('canvas');
+          crop.width = w;
+          crop.height = h;
+          crop.getContext('2d').drawImage(canvas, x, y, w, h, 0, 0, w, h);
+          crop.toBlob((b) => resolve(b), 'image/png', 0.95);
+        } catch {
+          resolve(null);
+        }
       };
       im.onerror = () => resolve(null);
       im.src = imageUrl;
@@ -375,6 +424,32 @@ export default function RefineImageForm({
         description: msg + hint,
         variant: 'destructive',
         duration: 8000,
+      });
+    } finally {
+      setIsUploadingRefine(false);
+    }
+  };
+
+  /** Um passe focado em reduzir artefactos e recuperar nitidez; a IA não garante cópia pixel-a-pixel. */
+  const handleImproveQualityClick = async () => {
+    if (!projectId || !user?.id) {
+      toast({ title: 'Projeto e usuário são necessários', variant: 'destructive' });
+      return;
+    }
+    if (!imageUrl) return;
+    setIsUploadingRefine(true);
+    try {
+      const instruction = refineInstruction.trim();
+      onRefine?.({
+        improveQuality: true,
+        instruction,
+        configOverrides: { dimensions: refineDimensions, image_size: refineImageSize },
+      });
+    } catch (e) {
+      toast({
+        title: 'Erro ao enviar',
+        description: e?.message || String(e),
+        variant: 'destructive',
       });
     } finally {
       setIsUploadingRefine(false);
@@ -625,9 +700,12 @@ export default function RefineImageForm({
             {selectionAction === 'free' && (
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground block">Instrução para a região selecionada</label>
+                <p className="text-xs text-muted-foreground">
+                  A caixa indica <span className="text-foreground/80">qual objeto</span> mudar (ex.: trator). Podes pedir para aumentar, mover ou rodar — o modelo pode ajustar o fundo à volta.
+                </p>
                 <Textarea
                   ref={instructionInputRef}
-                  placeholder="Descreva o ajuste na região (ex.: escureça, mude a cor…)"
+                  placeholder="Ex.: aumentar o trator ~30%, mover um pouco para a direita…"
                   value={refineInstruction}
                   onChange={(e) => setRefineInstruction(e.target.value)}
                   className="min-h-[60px] bg-muted border-border text-foreground placeholder:text-muted-foreground resize-none w-full"
@@ -635,28 +713,18 @@ export default function RefineImageForm({
                 />
               </div>
             )}
-            <Button
-              onClick={handleRefineClick}
-              disabled={!hasImageConnection || !hasAnyRefineAction || isBusy}
-              className="shrink-0"
-              title={!hasImageConnection ? 'Selecione uma conexão de imagem para refinar' : undefined}
-            >
-              {isUploadingRefine ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
-              Refinar
-            </Button>
-          </div>
-        ) : (
-          <div className="space-y-3" role="region" aria-label="Refinamento">
-            <p className="text-sm font-medium text-foreground">O que você quer fazer?</p>
-            <div className="flex flex-col sm:flex-row gap-2">
-              <Textarea
-                ref={instructionInputRef}
-                placeholder="Descreva o ajuste (ex.: deixe o fundo mais escuro) ou use uma imagem abaixo."
-                value={refineInstruction}
-                onChange={(e) => setRefineInstruction(e.target.value)}
-                className="flex-1 min-h-[60px] bg-muted border-border text-foreground placeholder:text-muted-foreground resize-none min-w-0"
-                aria-label="Instrução de refinamento"
-              />
+            <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleImproveQualityClick}
+                disabled={!hasImageConnection || isBusy}
+                className="shrink-0"
+                title="Reduz manchas e artefactos usando a imagem atual como referência (a IA não garante cópia idêntica)"
+              >
+                {isUploadingRefine ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wand2 className="h-4 w-4 mr-1" />}
+                Melhorar qualidade
+              </Button>
               <Button
                 onClick={handleRefineClick}
                 disabled={!hasImageConnection || !hasAnyRefineAction || isBusy}
@@ -666,6 +734,42 @@ export default function RefineImageForm({
                 {isUploadingRefine ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
                 Refinar
               </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3" role="region" aria-label="Refinamento">
+            <p className="text-sm font-medium text-foreground">O que você quer fazer?</p>
+            <div className="flex flex-col gap-2">
+              <Textarea
+                ref={instructionInputRef}
+                placeholder="Descreva o ajuste (ex.: deixe o fundo mais escuro) ou use uma imagem abaixo."
+                value={refineInstruction}
+                onChange={(e) => setRefineInstruction(e.target.value)}
+                className="flex-1 min-h-[60px] bg-muted border-border text-foreground placeholder:text-muted-foreground resize-none min-w-0"
+                aria-label="Instrução de refinamento"
+              />
+              <div className="flex flex-col sm:flex-row gap-2 flex-wrap">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleImproveQualityClick}
+                  disabled={!hasImageConnection || isBusy}
+                  className="shrink-0"
+                  title="Reduz manchas e artefactos usando a imagem atual como referência (a IA não garante cópia idêntica)"
+                >
+                  {isUploadingRefine ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Wand2 className="h-4 w-4 mr-1" />}
+                  Melhorar qualidade
+                </Button>
+                <Button
+                  onClick={handleRefineClick}
+                  disabled={!hasImageConnection || !hasAnyRefineAction || isBusy}
+                  className="shrink-0"
+                  title={!hasImageConnection ? 'Selecione uma conexão de imagem para refinar' : undefined}
+                >
+                  {isUploadingRefine ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Sparkles className="h-4 w-4 mr-1" />}
+                  Refinar
+                </Button>
+              </div>
             </div>
             <p className="text-xs text-muted-foreground">Ou envie uma imagem:</p>
             <div className="flex flex-wrap gap-4">
@@ -775,6 +879,10 @@ export default function RefineImageForm({
         {/* Opções avançadas */}
         <div className="pt-3 border-t border-border space-y-2">
           <p className="text-xs text-muted-foreground font-medium">Opções avançadas (opcional)</p>
+          <p className="text-[11px] leading-snug text-muted-foreground/90">
+            Cada refinamento re-gera a imagem com IA: muitos passos seguidos podem alterar rostos, mãos ou textura.
+            Prefira poucas instruções claras, qualidade 4K e, se possível, volte à arte original para mudanças grandes.
+          </p>
           <div className="flex flex-wrap gap-4">
             <div>
               <label className="text-xs text-muted-foreground block mb-1" title="Altera a proporção da arte; a imagem será recriada para preencher o novo formato.">Dimensões</label>
@@ -790,9 +898,14 @@ export default function RefineImageForm({
               </Select>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground block mb-1">Qualidade</label>
+              <label
+                className="text-xs text-muted-foreground block mb-1"
+                title="Cada refinamento re-gera a imagem; use 4K para perder menos detalhe entre edições. Quotas da API Google podem limitar 4K."
+              >
+                Qualidade de saída
+              </label>
               <Select value={refineImageSize} onValueChange={setRefineImageSize}>
-                <SelectTrigger className="w-full sm:w-[100px] h-8 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-xs">
+                <SelectTrigger className="w-full sm:w-[min(100%,220px)] h-8 min-h-10 sm:min-h-0 bg-muted border-border text-foreground text-base sm:text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="bg-popover text-popover-foreground">
