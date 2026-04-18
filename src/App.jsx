@@ -53,6 +53,7 @@ import React from 'react';
     import MobileSiteEditor from '@/pages/user/MobileSiteEditor';
     import PwaUpdateNotification from '@/components/PwaUpdateNotification';
     import MetaPixelRouteTracker from '@/components/analytics/MetaPixelRouteTracker';
+    import TikTokPixelRouteTracker from '@/components/analytics/TikTokPixelRouteTracker';
     import TrendingTopics from '@/pages/user/TrendingTopics';
     import KeywordPlanner from '@/pages/user/KeywordPlanner';
     import PublicationCalendar from '@/pages/user/PublicationCalendar';
@@ -113,6 +114,7 @@ import React from 'react';
       return (
           <>
             <MetaPixelRouteTracker />
+            <TikTokPixelRouteTracker />
             <Helmet>
                 <title>Neuro Ápice - Sistema de Gestão Inteligente</title>
                 <meta name="description" content="Sistema avançado de gestão com módulos de agentes inteligentes, planos personalizados e administração completa." />
@@ -216,7 +218,8 @@ import React from 'react';
                         <Route path="ferramentas/planejamento" element={<ProtectedRoute permissionKey="strategic_planner"><StrategicPlannerPage /></ProtectedRoute>} />
                         <Route path="ferramentas/analisador-campanha" element={<ProtectedRoute permissionKey="campaign_analyzer"><CampaignAnalyzer /></ProtectedRoute>} />
                         <Route path="ferramentas/gerador-de-imagens" element={<ProtectedRoute permissionKey="image_generator"><ImageGenerator /></ProtectedRoute>} />
-                        <Route path="ferramentas/neurodesign" element={<ProtectedRoute><NeuroDesignPage /></ProtectedRoute>} />
+                        <Route path="ferramentas/neurodesign" element={<Navigate to="/ferramentas/neurodesign/criar" replace />} />
+                        <Route path="ferramentas/neurodesign/:tab" element={<ProtectedRoute><NeuroDesignPage /></ProtectedRoute>} />
                         <Route path="ferramentas/neuro-flow" element={<ProtectedRoute><NeuroFlowPage /></ProtectedRoute>} />
                         <Route path="ferramentas/neuro-motion" element={<ProtectedRoute><NeuroMotionPage /></ProtectedRoute>} />
                         <Route path="ferramentas/artes-culto" element={<ProtectedRoute><ArtesCultoPage /></ProtectedRoute>} />

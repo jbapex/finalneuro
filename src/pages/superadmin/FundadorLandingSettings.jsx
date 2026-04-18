@@ -257,8 +257,13 @@ export default function FundadorLandingSettings() {
             Personalize textos, menu, preços, VSL e links. Use «CTAs da landing — para onde vão os botões» para o hero,
             «Ver planos», criador e CTA final (URL ou path; vazio = rolar até Planos). Os botões Standard/Pro nas tabelas de
             preços usam «Checkout — links dos botões dos planos» (ou variáveis{' '}
-            <code className="rounded bg-muted px-1">VITE_FUNDADOR_CHECKOUT_*</code> no .env). Na secção «Hero + VSL», «Script /
-            iframe da VSL» aceita incorporação ou link (prioridade sobre ID YouTube).
+            <code className="rounded bg-muted px-1">VITE_FUNDADOR_CHECKOUT_*</code> no .env).             Na secção «Hero + VSL», «VSL — iframe, URL ou código VTurb» aceita incorporação ou link (prioridade sobre ID
+            YouTube), ou o bloco completo VTurb/Converte AI:{' '}
+            <code className="rounded bg-muted px-1">vturb-smartplayer</code> + JavaScript com{' '}
+            <code className="rounded bg-muted px-1">s.src</code> para <code className="rounded bg-muted px-1">scripts.converteai.net/.../player.js</code>.
+            O campo «VTurb — otimizar velocidade» aplica no <code className="rounded bg-muted px-1">&lt;head&gt;</code> o
+            código de preload/dns-prefetch (e script <code className="rounded bg-muted px-1">_plt</code>) da VTurb. A
+            secção «Como funciona — três vídeos» na landing permite três VTurbs (NeuroDesigner, conteúdo, carrossel).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">

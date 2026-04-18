@@ -8,3 +8,20 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+
+/**
+ * RPC devolveu 404 / PGRST202 — a função não está exposta pelo PostgREST (não existe na BD
+ * desse projeto ou o schema cache do REST não foi recarregado após o CREATE FUNCTION).
+ */
+export function isPostgrestRpcNotFoundError(error) {
+  if (!error) return false;
+  const code = String(error.code || '');
+  const msg = String(error.message || '').toLowerCase();
+  const hint = String(error.hint || '').toLowerCase();
+  return (
+    code === 'PGRST202' ||
+    hint.includes('reload') ||
+    (msg.includes('could not find') && msg.includes('function')) ||
+    msg.includes('schema cache')
+  );
+}

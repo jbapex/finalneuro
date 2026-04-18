@@ -7,7 +7,7 @@ const BUCKET = 'system_branding';
 async function fetchFromTable() {
   const { data, error } = await supabase
     .from('system_branding')
-    .select('id, light_logo_url, dark_logo_url, icon_logo_url, icon_light_logo_url, icon_dark_logo_url, meta_pixel_id')
+    .select('id, light_logo_url, dark_logo_url, icon_logo_url, icon_light_logo_url, icon_dark_logo_url, meta_pixel_id, tiktok_pixel_id')
     .eq('id', BRANDING_ID)
     .maybeSingle();
 
@@ -23,6 +23,7 @@ async function fetchFromTable() {
       iconLightLogoUrl: null,
       iconDarkLogoUrl: null,
       metaPixelId: null,
+      tiktokPixelId: null,
       error,
     };
   }
@@ -34,6 +35,7 @@ async function fetchFromTable() {
     iconLightLogoUrl: data?.icon_light_logo_url ?? null,
     iconDarkLogoUrl: data?.icon_dark_logo_url ?? null,
     metaPixelId: data?.meta_pixel_id != null ? String(data.meta_pixel_id).trim() || null : null,
+    tiktokPixelId: data?.tiktok_pixel_id != null ? String(data.tiktok_pixel_id).trim() || null : null,
     error: null,
   };
 }
@@ -45,7 +47,7 @@ async function fetchFromStorageFallback() {
       // eslint-disable-next-line no-console
       console.warn('[systemBranding] erro ao listar bucket system_branding:', error);
     }
-    return { lightLogoUrl: null, darkLogoUrl: null, iconLogoUrl: null, metaPixelId: null };
+    return { lightLogoUrl: null, darkLogoUrl: null, iconLogoUrl: null, metaPixelId: null, tiktokPixelId: null };
   }
 
   let lightLogoUrl = null;
@@ -68,7 +70,7 @@ async function fetchFromStorageFallback() {
     }
   }
 
-  return { lightLogoUrl, darkLogoUrl, iconLogoUrl, metaPixelId: null };
+  return { lightLogoUrl, darkLogoUrl, iconLogoUrl, metaPixelId: null, tiktokPixelId: null };
 }
 
 export async function fetchSystemBranding() {
@@ -89,6 +91,7 @@ export async function fetchSystemBranding() {
     iconLightLogoUrl: tableResult.iconLightLogoUrl, // fallback não suporta ainda
     iconDarkLogoUrl: tableResult.iconDarkLogoUrl, // fallback não suporta ainda
     metaPixelId: tableResult.metaPixelId,
+    tiktokPixelId: tableResult.tiktokPixelId,
     error: tableResult.error,
   };
 }

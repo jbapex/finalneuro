@@ -41,7 +41,7 @@ const allTools = [
         title: 'NeuroDesign', 
         description: 'Crie imagens com sujeito, cenário, texto e controle total de composição.', 
         icon: <Palette className="h-8 w-8 text-primary" />,
-        path: '/ferramentas/neurodesign',
+        path: '/ferramentas/neurodesign/criar',
         permissionKey: null,
         highlight: true,
     },

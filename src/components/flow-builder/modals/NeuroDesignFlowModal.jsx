@@ -192,7 +192,7 @@ const NeuroDesignFlowModal = ({
     try {
       const { data, error } = await supabase
         .from('user_ai_connections')
-        .select('id, name, provider, default_model, capabilities')
+        .select('id, name, provider, default_model, capabilities, api_url')
         .eq('user_id', user.id);
       if (error) return;
       setImageConnections((data || []).filter((c) => c.capabilities?.image_generation));

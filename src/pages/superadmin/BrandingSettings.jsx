@@ -10,6 +10,7 @@ import { fetchSystemBranding } from '@/lib/systemBranding';
 import LogoCropDialog from '@/components/superadmin/branding/LogoCropDialog';
 import { Input } from '@/components/ui/input';
 import { normalizeMetaPixelId } from '@/lib/metaPixel';
+import { normalizeTikTokPixelId } from '@/lib/tiktokPixel';
 
 const BUCKET = 'system_branding';
 const BRANDING_ID = 'neuro_apice';
@@ -21,9 +22,11 @@ export default function BrandingSettings() {
   const [iconLightLogoUrl, setIconLightLogoUrl] = useState('');
   const [iconDarkLogoUrl, setIconDarkLogoUrl] = useState('');
   const [metaPixelId, setMetaPixelId] = useState('');
+  const [tiktokPixelId, setTiktokPixelId] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(null);
   const [savingPixel, setSavingPixel] = useState(false);
+  const [savingTikTokPixel, setSavingTikTokPixel] = useState(false);
 
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const [pendingVariant, setPendingVariant] = useState(null);
@@ -45,6 +48,7 @@ export default function BrandingSettings() {
       setIconLightLogoUrl(result.iconLightLogoUrl || '');
       setIconDarkLogoUrl(result.iconDarkLogoUrl || '');
       setMetaPixelId(result.metaPixelId || '');
+      setTiktokPixelId(result.tiktokPixelId || '');
     } finally {
       setLoading(false);
     }
@@ -231,6 +235,40 @@ export default function BrandingSettings() {
       });
     } finally {
       setSavingPixel(false);
+    }
+  };
+
+  const saveTikTokPixel = async () => {
+    const normalized = normalizeTikTokPixelId(tiktokPixelId);
+    setSavingTikTokPixel(true);
+    try {
+      const { error } = await supabase
+        .from('system_branding')
+        .upsert(
+          {
+            id: BRANDING_ID,
+            tiktok_pixel_id: normalized || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+
+      if (error) throw error;
+      setTiktokPixelId(normalized);
+      toast({
+        title: 'Pixel TikTok atualizado',
+        description: normalized
+          ? 'O ID foi guardado. Novas visitas já enviam PageView ao TikTok.'
+          : 'Pixel removido da base. Pode usar só VITE_TIKTOK_PIXEL_ID no build, se configurado.',
+      });
+    } catch (err) {
+      toast({
+        title: 'Erro ao guardar Pixel TikTok',
+        description: err?.message || 'Verifique permissões e se a migração tiktok_pixel foi aplicada.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingTikTokPixel(false);
     }
   };
 
@@ -552,6 +590,41 @@ export default function BrandingSettings() {
           <Button type="button" onClick={saveMetaPixel} disabled={savingPixel}>
             {savingPixel ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Guardar Pixel Meta
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            TikTok Pixel
+          </CardTitle>
+          <CardDescription>
+            ID do pixel no TikTok Ads (Gestor de Eventos). Mesmo alcance que o Meta: landing{' '}
+            <code className="rounded bg-muted px-1">/fundador</code>, login e área logada —{' '}
+            <code className="rounded bg-muted px-1">PageView</code> em cada rota (SPA). Vazio aqui: use{' '}
+            <code className="rounded bg-muted px-1">VITE_TIKTOK_PIXEL_ID</code> no build.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="tiktok-pixel-id">ID do Pixel TikTok</Label>
+            <Input
+              id="tiktok-pixel-id"
+              placeholder="Cole o Pixel ID do TikTok Events Manager"
+              value={tiktokPixelId}
+              onChange={(e) => setTiktokPixelId(e.target.value)}
+              autoComplete="off"
+            />
+            <p className="text-xs text-muted-foreground">
+              Apenas letras, números, <code className="text-xs">_</code> e <code className="text-xs">-</code> (8–64
+              caracteres). Valores inválidos são limpos ao guardar.
+            </p>
+          </div>
+          <Button type="button" onClick={saveTikTokPixel} disabled={savingTikTokPixel}>
+            {savingTikTokPixel ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Guardar Pixel TikTok
           </Button>
         </CardContent>
       </Card>

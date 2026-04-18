@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid, Image as ImageIcon, Wand2, GraduationCap } from 'lucide-react';
+import { LayoutGrid, Image as ImageIcon, Wand2, GraduationCap, GalleryHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NeuroDesignSidebar = ({
@@ -19,6 +19,8 @@ const NeuroDesignSidebar = ({
   showBrandHeader = false,
   /** Aba Experts (Gerador categoria Neuro Designer); desligar em variantes que partilham esta sidebar (ex.: Artes de Culto). */
   showExpertsTab = true,
+  /** Aba Carrossel (NeuroDesign); desligar em Artes de Culto / variantes sem fluxo completo. */
+  showCarouselTab = true,
 }) => {
   const handleSetView = (v) => {
     setView(v);
@@ -68,6 +70,22 @@ const NeuroDesignSidebar = ({
           <Wand2 className="h-4 w-4" />
           Refinamento
         </button>
+        {showCarouselTab && (
+          <button
+            type="button"
+            onClick={() => handleSetView('carousel')}
+            className={cn(
+              'w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors mt-2',
+              view === 'carousel' ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'text-muted-foreground hover:bg-muted'
+            )}
+          >
+            <GalleryHorizontal className="h-4 w-4 shrink-0" />
+            <span className="min-w-0 truncate">Carrossel</span>
+            <span className="ml-auto shrink-0 rounded bg-primary/20 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+              Beta
+            </span>
+          </button>
+        )}
         {showExpertsTab && (
           <button
             type="button"

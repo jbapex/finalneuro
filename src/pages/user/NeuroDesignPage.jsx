@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Helmet } from 'react-helmet';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
+import { getMyNeurodesignCarouselAccess } from '@/lib/neurodesignCarouselAccess';
 import { useToast } from '@/components/ui/use-toast';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { Button } from '@/components/ui/button';
@@ -10,13 +11,14 @@ import {
   Dialog,
   DialogContent,
 } from '@/components/ui/dialog';
-import { FolderOpen, PanelLeft, Upload } from 'lucide-react';
+import { FolderOpen, ImageIcon, PanelLeft, Upload } from 'lucide-react';
 import NeuroDesignSidebar from '@/components/neurodesign/NeuroDesignSidebar';
 import BuilderPanel from '@/components/neurodesign/BuilderPanel';
 import PreviewPanel from '@/components/neurodesign/PreviewPanel';
 import MasonryGallery from '@/components/neurodesign/MasonryGallery';
 import NeuroDesignErrorBoundary from '@/components/neurodesign/NeuroDesignErrorBoundary';
 import NeuroDesignExpertsPanel from '@/components/neurodesign/NeuroDesignExpertsPanel';
+import NeuroDesignCarouselPanel from '@/components/neurodesign/NeuroDesignCarouselPanel';
 import { getDefaultAiConnection } from '@/lib/userAiDefaults';
 import { uploadNeuroDesignFile } from '@/lib/neurodesignStorage';
 import { mergeNeuroDesignDefaults } from '@/lib/neurodesign/defaultConfig';
@@ -28,14 +30,32 @@ import { useNeurodesignExpiredCleanup } from '@/hooks/useNeurodesignExpiredClean
 
 import { getFriendlyErrorMessage, cn } from '@/lib/utils';
 import { NEURODESIGN_CHAT_FILL_STORAGE_KEY } from '@/lib/neurodesign/chatBridge';
+import {
+  NEURODESIGN_GALLERY_CARROSSEIS_PARAM,
+  neurodesignPathForView,
+  neurodesignViewFromSlug,
+} from '@/lib/neurodesign/neurodesignRoutes';
+import {
+  MAX_CARROSSEL_GALLERY_SAVES,
+  NEURODESIGN_CARROSSEL_GALLERY_UPDATED_EVENT,
+  notifyCarrosselGalleryUpdated,
+  stashCarrosselEditorLoad,
+} from '@/lib/neurodesign/carrosselGalleryStorage';
+import {
+  deleteCarrosselGallerySave,
+  fetchCarrosselGallerySaves,
+  migrateLocalCarrosselGalleryToServer,
+} from '@/lib/neurodesign/carrosselGalleryRemote';
 
 const NeuroDesignPage = () => {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const { tab: tabSlug } = useParams();
   const [builderFillSeed, setBuilderFillSeed] = useState(undefined);
-  const [view, setView] = useState('create');
+  const [view, setView] = useState(() => neurodesignViewFromSlug(tabSlug) || 'create');
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [currentConfig, setCurrentConfig] = useState(null);
@@ -61,6 +81,106 @@ const NeuroDesignPage = () => {
   const [builderDrawerOpen, setBuilderDrawerOpen] = useState(false);
   /** undefined = seguir `currentConfig.user_ai_connection_id`; null = mock explícito; string = conexão escolhida no refinamento */
   const [refineConnectionOverride, setRefineConnectionOverride] = useState(undefined);
+  /** Aba Carrossel: mensagem beta se super admin marcou em Usuários */
+  const [neurodesignCarouselAccess, setNeurodesignCarouselAccess] = useState(false);
+  const carrosselGallerySectionRef = useRef(null);
+  const [carrosselGalleryList, setCarrosselGalleryList] = useState([]);
+  const [isLoadingCarrosselGallery, setIsLoadingCarrosselGallery] = useState(false);
+
+  const refreshCarrosselGalleryList = useCallback(async () => {
+    if (!user?.id) {
+      setCarrosselGalleryList([]);
+      setIsLoadingCarrosselGallery(false);
+      return;
+    }
+    setIsLoadingCarrosselGallery(true);
+    try {
+      await migrateLocalCarrosselGalleryToServer(supabase, user.id);
+      const list = await fetchCarrosselGallerySaves(supabase, user.id);
+      setCarrosselGalleryList(list);
+    } catch (e) {
+      toast({
+        title: 'Erro ao carregar carrosséis',
+        description: e?.message || String(e),
+        variant: 'destructive',
+      });
+      setCarrosselGalleryList([]);
+    } finally {
+      setIsLoadingCarrosselGallery(false);
+    }
+  }, [user?.id, toast]);
+
+  useEffect(() => {
+    void refreshCarrosselGalleryList();
+  }, [refreshCarrosselGalleryList, view]);
+
+  useEffect(() => {
+    const onGalleryUpdated = () => void refreshCarrosselGalleryList();
+    window.addEventListener(NEURODESIGN_CARROSSEL_GALLERY_UPDATED_EVENT, onGalleryUpdated);
+    return () => window.removeEventListener(NEURODESIGN_CARROSSEL_GALLERY_UPDATED_EVENT, onGalleryUpdated);
+  }, [refreshCarrosselGalleryList]);
+
+  const carrosseisGalleryHighlight = searchParams.get(NEURODESIGN_GALLERY_CARROSSEIS_PARAM) === '1';
+  useEffect(() => {
+    if (view !== 'gallery' || !carrosseisGalleryHighlight) return;
+    const id = window.requestAnimationFrame(() => {
+      carrosselGallerySectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [view, carrosseisGalleryHighlight]);
+
+  const openCarrosselFromGallery = useCallback(
+    (entry) => {
+      stashCarrosselEditorLoad({
+        payload: entry.payload,
+        name: entry.name,
+        galleryEntryId: entry.id,
+      });
+      navigate(neurodesignPathForView('carousel'));
+    },
+    [navigate]
+  );
+
+  const deleteCarrosselFromGallery = useCallback(
+    async (id) => {
+      if (!user?.id) return;
+      try {
+        await deleteCarrosselGallerySave(supabase, user.id, id);
+        notifyCarrosselGalleryUpdated();
+        setCarrosselGalleryList((prev) => prev.filter((x) => x.id !== id));
+        toast({ title: 'Carrossel removido da galeria' });
+      } catch (e) {
+        toast({
+          title: 'Não foi possível eliminar',
+          description: e?.message || String(e),
+          variant: 'destructive',
+        });
+        void refreshCarrosselGalleryList();
+      }
+    },
+    [user?.id, toast, refreshCarrosselGalleryList]
+  );
+
+  /** Sincroniza aba com o segmento da URL (incl. botão voltar do browser). */
+  useEffect(() => {
+    const v = neurodesignViewFromSlug(tabSlug);
+    if (!v) {
+      navigate(neurodesignPathForView('create'), { replace: true });
+      return;
+    }
+    setView((prev) => (prev === v ? prev : v));
+  }, [tabSlug, navigate]);
+
+  const setViewAndNavigate = useCallback(
+    (nextView) => {
+      setView(nextView);
+      const path = neurodesignPathForView(nextView);
+      if (location.pathname !== path) {
+        navigate(path);
+      }
+    },
+    [navigate, location.pathname]
+  );
 
   useEffect(() => {
     const st = location.state;
@@ -69,7 +189,8 @@ const NeuroDesignPage = () => {
       setBuilderFillSeed(fromState);
       setView('create');
       if (!isLg) setBuilderDrawerOpen(true);
-      navigate(`${location.pathname}${location.search || ''}`, {
+      const path = neurodesignPathForView('create');
+      navigate(`${path}${location.search || ''}`, {
         replace: true,
         state: st && typeof st === 'object' ? { ...st, neuroChatFillPrompt: undefined } : {},
       });
@@ -85,6 +206,9 @@ const NeuroDesignPage = () => {
         sessionStorage.removeItem(NEURODESIGN_CHAT_FILL_STORAGE_KEY);
         setBuilderFillSeed(v);
         setView('create');
+        if (location.pathname !== neurodesignPathForView('create')) {
+          navigate(neurodesignPathForView('create'));
+        }
         if (!isLg) setBuilderDrawerOpen(true);
         toast({
           title: 'Brief do Chat IA',
@@ -145,7 +269,7 @@ const NeuroDesignPage = () => {
     try {
       const { data, error } = await supabase
         .from('user_ai_connections')
-        .select('id, name, provider, default_model, capabilities')
+        .select('id, name, provider, default_model, capabilities, api_url')
         .eq('user_id', user.id);
       if (error) return;
       const list = (data || []).filter((c) => c.capabilities?.image_generation);
@@ -282,6 +406,27 @@ const NeuroDesignPage = () => {
     fetchImageConnections();
     fetchLlmConnections();
   }, [ensureOneGallery, fetchImageConnections, fetchLlmConnections]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setNeurodesignCarouselAccess(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        await supabase.auth.refreshSession();
+      } catch {
+        /* ignore */
+      }
+      const allowed = await getMyNeurodesignCarouselAccess(supabase);
+      if (cancelled) return;
+      setNeurodesignCarouselAccess(allowed);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.app_metadata?.neurodesign_carousel_access]);
 
   useEffect(() => {
     if (selectedProject) {
@@ -874,10 +1019,10 @@ const NeuroDesignPage = () => {
       </Helmet>
       <NeuroDesignErrorBoundary>
       <div className="flex h-[calc(100vh-4rem)] min-h-[400px] bg-background text-foreground overflow-hidden min-w-0">
-        {isLg && (
+        {isLg && view !== 'carousel' && (
           <NeuroDesignSidebar
             view={view}
-            setView={setView}
+            setView={setViewAndNavigate}
             projects={projects}
             selectedProject={selectedProject}
             onSelectProject={setSelectedProject}
@@ -889,7 +1034,7 @@ const NeuroDesignPage = () => {
           />
         )}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden min-h-0">
-          {!isLg && (
+          {(!isLg || view === 'carousel') && view !== 'carousel' && (
             <div className="flex items-center gap-2 p-2 border-b border-border shrink-0">
               <Button
                 variant="outline"
@@ -900,7 +1045,7 @@ const NeuroDesignPage = () => {
                 <FolderOpen className="h-4 w-4 mr-1" />
                 Navegação
               </Button>
-              {view === 'create' && (
+              {!isLg && view === 'create' && (
                 <Button
                   variant="secondary"
                   size="sm"
@@ -911,7 +1056,7 @@ const NeuroDesignPage = () => {
                   <span className="whitespace-nowrap">Configurações</span>
                 </Button>
               )}
-              {view === 'refine' && (
+              {!isLg && view === 'refine' && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -976,6 +1121,77 @@ const NeuroDesignPage = () => {
             aria-hidden={view !== 'gallery'}
             className={cn('flex-1 overflow-y-auto p-4 sm:p-6 min-h-0', view !== 'gallery' && 'hidden')}
           >
+            <section
+              ref={carrosselGallerySectionRef}
+              className={cn(
+                'mb-8 rounded-xl border border-border bg-muted/20 p-4 sm:p-5',
+                carrosseisGalleryHighlight && 'ring-2 ring-primary/35'
+              )}
+              aria-labelledby="neurodesign-carrossel-gallery-heading"
+            >
+              <div className="mb-3 flex flex-wrap items-start gap-2">
+                <ImageIcon className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <h2 id="neurodesign-carrossel-gallery-heading" className="text-base font-semibold text-foreground">
+                    Carrosséis guardados
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Até {MAX_CARROSSEL_GALLERY_SAVES} por conta, guardados no servidor (sincronizados entre dispositivos).
+                    Crie e guarde com nome no editor <strong className="text-foreground">Carrossel</strong> (botão Salvar).
+                  </p>
+                </div>
+              </div>
+              {!user?.id ? (
+                <p className="text-sm text-muted-foreground">Inicie sessão para ver os seus carrosséis guardados.</p>
+              ) : isLoadingCarrosselGallery ? (
+                <p className="text-sm text-muted-foreground">A carregar carrosséis…</p>
+              ) : carrosselGalleryList.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Ainda não há carrosséis guardados. Abra a aba Carrossel e use <strong className="text-foreground">Salvar</strong> para
+                  dar um nome e adicionar aqui.
+                </p>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {carrosselGalleryList.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex flex-col rounded-lg border border-border bg-background p-4 shadow-sm"
+                    >
+                      <h3 className="line-clamp-2 font-semibold text-foreground" title={entry.name}>
+                        {entry.name}
+                      </h3>
+                      <p className="mt-1 text-[11px] text-muted-foreground">
+                        {new Date(entry.savedAt).toLocaleString('pt-BR', {
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}{' '}
+                        · {entry.payload.slides.length} slide{entry.payload.slides.length !== 1 ? 's' : ''}
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="flex-1 min-w-[96px]"
+                          onClick={() => openCarrosselFromGallery(entry)}
+                        >
+                          Abrir no editor
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive border-destructive/40 hover:bg-destructive/10"
+                          onClick={() => void deleteCarrosselFromGallery(entry.id)}
+                        >
+                          Eliminar
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <p className="text-sm text-muted-foreground mb-4">
               Todas as artes que você já gerou no NeuroDesign.
             </p>
@@ -1055,6 +1271,22 @@ const NeuroDesignPage = () => {
           >
             <NeuroDesignExpertsPanel />
           </div>
+          <div
+            role="tabpanel"
+            id="neurodesign-panel-carousel"
+            aria-hidden={view !== 'carousel'}
+            className={cn('flex flex-1 min-w-0 min-h-0 flex-col overflow-hidden', view !== 'carousel' && 'hidden')}
+          >
+            <NeuroDesignCarouselPanel
+              hasBetaAccess={neurodesignCarouselAccess}
+              llmConnections={llmConnections}
+              selectedLlmId={selectedLlmId}
+              onSelectLlmId={setSelectedLlmId}
+              imageConnections={imageConnections}
+              user={user}
+              onOpenNavigation={() => setSidebarDrawerOpen(true)}
+            />
+          </div>
         </main>
       </div>
       <input
@@ -1073,7 +1305,7 @@ const NeuroDesignPage = () => {
         >
           <NeuroDesignSidebar
             view={view}
-            setView={setView}
+            setView={setViewAndNavigate}
             projects={projects}
             selectedProject={selectedProject}
             onSelectProject={setSelectedProject}

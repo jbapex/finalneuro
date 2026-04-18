@@ -13,7 +13,7 @@ if [ "${NEUROAPICE_DEPLOY_UNLOCK:-}" != "1" ]; then
 fi
 
 # Lista completa de Edge Functions (cada pasta em supabase/functions com index.ts ou index.py)
-FUNCTION_DIRS="church-art-generate church-art-generate-google download-video generate-chat-follow-ups generate-chat-title generate-content generic-ai-chat get-google-models get-openai-models get-openrouter-models get-video-metadata neurodesign-generate neurodesign-generate-google neurodesign-refine neurodesign-refine-google neuroflow-generate-video-veo neuroflow-list-models neuroflow-video-download page-analyzer site-builder-assistant site-generator keyword-planner"
+FUNCTION_DIRS="church-art-generate church-art-generate-google download-video generate-chat-follow-ups generate-chat-title generate-content generic-ai-chat get-google-models get-openai-models get-openrouter-models get-video-metadata neurodesign-generate neurodesign-generate-google neurodesign-refine neurodesign-refine-google neuroflow-generate-video-veo neuroflow-list-models neuroflow-video-download page-analyzer site-builder-assistant site-generator keyword-planner superadmin-neurodesign-carousel"
 
 echo "=== 1. Build do front (neuroapice) ==="
 cd "$NEUROAPICE"

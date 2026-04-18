@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
     import { motion } from 'framer-motion';
     import { useToast } from '@/components/ui/use-toast';
     import { supabase } from '@/lib/customSupabaseClient';
+    import { fetchNeurodesignCarouselFlags, setNeurodesignCarouselAccess } from '@/lib/neurodesignCarouselAccess';
     import { Button } from '@/components/ui/button';
     import { Input } from '@/components/ui/input';
     import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -27,6 +28,7 @@ import React, { useState, useEffect, useCallback } from 'react';
         has_ads_access: z.boolean(),
         has_strategic_planner_access: z.boolean(),
         has_custom_ai_access: z.boolean(),
+        neurodesign_carousel_access: z.boolean(),
     });
 
     const UsersManagement = () => {
@@ -50,13 +52,30 @@ import React, { useState, useEffect, useCallback } from 'react';
             has_ads_access: false,
             has_strategic_planner_access: false,
             has_custom_ai_access: false,
+            neurodesign_carousel_access: false,
         },
       });
 
       const fetchData = useCallback(async () => {
         const { data: usersData, error: usersError } = await supabase.rpc('get_all_users_with_details');
-        if (usersError) toast({ title: 'Erro ao carregar usuários', description: usersError.message, variant: 'destructive' });
-        else setUsers(usersData || []);
+        if (usersError) {
+          toast({ title: 'Erro ao carregar usuários', description: usersError.message, variant: 'destructive' });
+          setUsers([]);
+        } else {
+          const base = usersData || [];
+          const ids = base.map((u) => u.id).filter(Boolean);
+          if (ids.length === 0) {
+            setUsers(base);
+          } else {
+            const { rows: flags, error: flagsError } = await fetchNeurodesignCarouselFlags(supabase, ids);
+            if (flagsError) {
+              setUsers(base.map((u) => ({ ...u, neurodesign_carousel_access: false })));
+            } else {
+              const map = Object.fromEntries((flags || []).map((f) => [f.id, Boolean(f.neurodesign_carousel_access)]));
+              setUsers(base.map((u) => ({ ...u, neurodesign_carousel_access: map[u.id] ?? false })));
+            }
+          }
+        }
         
         const { data: plansData, error: plansError } = await supabase.from('plans').select('id, name');
         if (plansError) toast({ title: 'Erro ao carregar planos', description: plansError.message, variant: 'destructive' });
@@ -83,6 +102,7 @@ import React, { useState, useEffect, useCallback } from 'react';
             has_ads_access: user.has_ads_access || false,
             has_strategic_planner_access: user.has_strategic_planner_access || false,
             has_custom_ai_access: user.has_custom_ai_access || false,
+            neurodesign_carousel_access: user.neurodesign_carousel_access || false,
         });
         setIsFormOpen(true);
       };
@@ -96,7 +116,7 @@ import React, { useState, useEffect, useCallback } from 'react';
       const onSubmit = async (data) => {
         if (!editingUser) return;
         
-        const { module_ids, email, ...profileData } = data;
+        const { module_ids, email, neurodesign_carousel_access, ...profileData } = data;
 
         const { error: profileError } = await supabase
             .from('profiles')
@@ -106,6 +126,16 @@ import React, { useState, useEffect, useCallback } from 'react';
         if (profileError) {
             toast({ title: 'Erro ao atualizar perfil', description: profileError.message, variant: 'destructive' });
             return;
+        }
+
+        const { error: carouselError } = await setNeurodesignCarouselAccess(
+          supabase,
+          editingUser.id,
+          neurodesign_carousel_access
+        );
+        if (carouselError) {
+          toast({ title: 'Erro ao atualizar acesso Carrossel', description: carouselError.message, variant: 'destructive' });
+          return;
         }
 
         const { error: deleteModulesError } = await supabase.from('user_modules').delete().eq('user_id', editingUser.id);
@@ -174,6 +204,7 @@ import React, { useState, useEffect, useCallback } from 'react';
                                         {user.has_ads_access && <Badge variant="outline">Anúncios</Badge>}
                                         {user.has_strategic_planner_access && <Badge variant="outline">Planner</Badge>}
                                         {user.has_custom_ai_access && <Badge variant="outline" className="text-primary border-primary">IA Custom</Badge>}
+                                        {user.neurodesign_carousel_access && <Badge variant="outline">Carrossel ND</Badge>}
                                     </div>
                                 </TableCell>
                                 <TableCell className="hidden xl:table-cell">{new Date(user.updated_at).toLocaleDateString()}</TableCell>
@@ -226,6 +257,7 @@ import React, { useState, useEffect, useCallback } from 'react';
                                 <FormField control={form.control} name="has_ads_access" render={({ field }) => (<SwitchItem field={field} label="Acesso ao Criador de Anúncios" />)} />
                                 <FormField control={form.control} name="has_strategic_planner_access" render={({ field }) => (<SwitchItem field={field} label="Acesso ao Planejador Estratégico" />)} />
                                 <FormField control={form.control} name="has_custom_ai_access" render={({ field }) => (<SwitchItem field={field} label="Acesso à Conexão de IA Personalizada" icon={BrainCircuit} />)} />
+                                <FormField control={form.control} name="neurodesign_carousel_access" render={({ field }) => (<SwitchItem field={field} label="NeuroDesign: aba Carrossel (acesso antecipado)" />)} />
                             </div>
 
                             <Controller

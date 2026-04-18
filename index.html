@@ -11,13 +11,22 @@
 		<link rel="manifest" href="/manifest.webmanifest">
     <meta http-equiv="Content-Security-Policy" content="
       default-src 'self' https: wss:; 
-      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://connect.facebook.net;
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://connect.facebook.net https://scripts.converteai.net https://analytics.tiktok.com https://cdn.utmify.com.br;
       style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://use.typekit.net;
       font-src 'self' data: https://fonts.gstatic.com https://use.typekit.net *.facebook.com *.fbcdn.net *.fbsbx.com;
       img-src 'self' data: blob: https:;
+      media-src 'self' blob: https: data:;
       connect-src 'self' *;
-      frame-src 'self' https://www.facebook.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://*.tv.pandavideo.com.br https://*.pandavideo.com.br;
+      frame-src 'self' https://www.facebook.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com https://*.tv.pandavideo.com.br https://*.pandavideo.com.br https://scripts.converteai.net https://*.converteai.net;
     ">
+		<!-- UTMify: preserva UTMs na landpage (query → storage / repasse) -->
+		<script
+			src="https://cdn.utmify.com.br/scripts/utms/latest.js"
+			data-utmify-prevent-xcod-sck
+			data-utmify-prevent-subids
+			async
+			defer
+		></script>
 		<title>Neuro Ápice</title>
 	</head>
 	<body style="background:#111827;color:#f3f4f6;margin:0;min-height:100dvh">

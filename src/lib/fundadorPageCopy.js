@@ -103,11 +103,20 @@ export const DEFAULT_FUNDADOR_COPY = {
   checkout_standard_anual: '',
   checkout_pro_anual: '',
 
+  /** Back redirect: URL https ao usar «voltar» no browser; anexa ?utm=… da landing. Vazio = usar só .env se existir. */
+  back_redirect_url: '',
+
   vsl_youtube_id: '',
-  /** Colar iframe (YouTube/Vimeo, etc.) ou URL do vídeo; tem prioridade sobre vsl_youtube_id / .env */
+  /** Iframe, link ou bloco VTurb (HTML + JS do painel). Tem prioridade sobre vsl_youtube_id / .env */
   vsl_embed_html: '',
+  /**
+   * Opcional: snippet VTurb “Otimizar velocidade” para o &lt;head&gt; (script _plt + link preload/dns-prefetch).
+   * Só domínios Converte AI / VTurb são aceites.
+   */
+  vsl_vturb_speed_head_html: '',
 
   nav_vsl: 'Vídeo',
+  nav_como_funciona: 'Como funciona',
   nav_dor: 'O problema',
   nav_solucao: 'Solução',
   nav_criador: 'Quem criou',
@@ -135,6 +144,35 @@ export const DEFAULT_FUNDADOR_COPY = {
   vsl_iframe_title: 'VSL Neuro Ápice',
   vsl_placeholder_html:
     'Cole o código de incorporação ou o link do vídeo em «Script / iframe da VSL» no Super Admin, ou configure o ID do YouTube / VITE_FUNDADOR_VSL_YOUTUBE_ID no .env.',
+
+  demo_section_eyebrow: 'Na prática',
+  demo_section_title: 'Veja cada ferramenta em ação',
+  demo_section_subtitle:
+    'Três pilares do Neuro Ápice em vídeo: NeuroDesigner, geração de conteúdo e carrosséis para redes sociais.',
+
+  demo_neuro_title: 'NeuroDesigner',
+  demo_neuro_intro:
+    'Como transformar ideias em artes com inteligência de design real — sem passar horas ajustando layout no Canva.',
+  demo_neuro_embed_html: '',
+  demo_neuro_iframe_title: 'Como funciona o NeuroDesigner',
+  demo_neuro_placeholder_html:
+    'Cole o código VTurb ou o iframe do vídeo em «Como funciona — três vídeos» no Super Admin (bloco NeuroDesigner).',
+
+  demo_content_title: 'Gerador de conteúdo',
+  demo_content_intro:
+    'Como produzir textos e peças de copy alinhados à sua marca, com o mesmo fluxo: conecta, clica, revisa.',
+  demo_content_embed_html: '',
+  demo_content_iframe_title: 'Como funciona o gerador de conteúdo',
+  demo_content_placeholder_html:
+    'Cole o código VTurb ou o iframe do vídeo em «Como funciona — três vídeos» no Super Admin (bloco Conteúdo).',
+
+  demo_carousel_title: 'Criador de carrossel',
+  demo_carousel_intro:
+    'Como montar carrosséis para Instagram e outras redes — slides coerentes, rápidos e prontos para publicar.',
+  demo_carousel_embed_html: '',
+  demo_carousel_iframe_title: 'Como funciona o criador de carrossel',
+  demo_carousel_placeholder_html:
+    'Cole o código VTurb ou o iframe do vídeo em «Como funciona — três vídeos» no Super Admin (bloco Carrossel).',
 
   dor_eyebrow: 'O problema',
   dor_title: 'Você reconhece essa rotina?',
@@ -405,6 +443,7 @@ E como membro da Turma Fundadora, você não vai ter acesso só ao sistema — v
 
 export const FUNDADOR_NAV_IDS = [
   'vsl',
+  'como-funciona',
   'dor',
   'solucao',
   'criador',
@@ -418,6 +457,7 @@ export const FUNDADOR_NAV_IDS = [
 export function fundadorNavLabelKey(id) {
   const map = {
     vsl: 'nav_vsl',
+    'como-funciona': 'nav_como_funciona',
     dor: 'nav_dor',
     solucao: 'nav_solucao',
     criador: 'nav_criador',
@@ -499,9 +539,115 @@ function finalizeFundadorVslEmbedSrc(srcRaw) {
   return null;
 }
 
+function escapeHtmlAttr(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/** Aspas “inteligentes” e espaços ao colar do Word/painel. */
+function normalizeVturbPaste(raw) {
+  return String(raw)
+    .trim()
+    .replace(/[\u201c\u201d\u00ab\u00bb]/g, '"')
+    .replace(/[\u2018\u2019]/g, "'");
+}
+
+/**
+ * Extrai a URL do player.js (único host permitido: scripts.converteai.net).
+ * Aceita: URL solta, caminho /v4/player.js ou futuras variantes, e o JS minificado (s.src="https://...").
+ */
+function extractConverteAiPlayerJsUrl(t) {
+  const candidates = [];
+
+  const strict = t.match(
+    /https:\/\/scripts\.converteai\.net\/[a-zA-Z0-9-]+\/players\/[a-zA-Z0-9]+\/v\d+\/player\.js/i
+  );
+  if (strict) candidates.push(strict[0]);
+
+  const loose = t.match(/https:\/\/scripts\.converteai\.net\/[^\s"'<>]+\.js/i);
+  if (loose) candidates.push(loose[0]);
+
+  const fromAssign = t.match(/\.src\s*=\s*["'](https:\/\/scripts\.converteai\.net\/[^"']+)["']/i);
+  if (fromAssign) candidates.push(fromAssign[1]);
+
+  const seen = new Set();
+  for (let c of candidates) {
+    if (!c || seen.has(c)) continue;
+    seen.add(c);
+    c = c.split('?')[0];
+    if (c.startsWith('http://')) c = `https://${c.slice('http://'.length)}`;
+    try {
+      const url = new URL(c);
+      if (url.hostname !== 'scripts.converteai.net') continue;
+      if (!/\.js$/i.test(url.pathname)) continue;
+      return c;
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+/**
+ * Incorporação VTurb / Converte AI (custom element + script em scripts.converteai.net).
+ * Aceita o código **completo** colado do painel: `<vturb-smartplayer>...</vturb-smartplayer>` e o bloco
+ * `<script>...</script>` com `document.createElement` / `s.src="...player.js"`.
+ *
+ * `embedHtml` segue o padrão da VTurb para React (HTML bruto + carregamento do script na app), evitando
+ * executar HTML arbitrário no cliente; só URLs validadas em scripts.converteai.net são carregadas.
+ *
+ * @returns {{ scriptSrc: string, smartplayerId: string, embedHtml: string, style: Record<string, string> } | null}
+ */
+export function parseFundadorVslVturbEmbed(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const t = normalizeVturbPaste(raw);
+  if (!t) return null;
+
+  let scriptSrc = extractConverteAiPlayerJsUrl(t);
+
+  const pathIdMatch = scriptSrc?.match(/\/players\/([a-fA-F0-9]+)\//i);
+  const idFromUrl = pathIdMatch?.[1];
+
+  const idAttr = t.match(/<vturb-smartplayer[^>]*\bid\s*=\s*["']([^"']+)["']/i);
+  const smartplayerId = idAttr?.[1] || (idFromUrl ? `vid-${idFromUrl}` : null);
+
+  if (!scriptSrc || !smartplayerId) return null;
+  if (!/^https:\/\/scripts\.converteai\.net\//i.test(scriptSrc)) return null;
+
+  const styleMatch = t.match(/<vturb-smartplayer[^>]*\bstyle\s*=\s*["']([^"']*)["']/i);
+  const styleAttr = styleMatch?.[1]?.trim() || 'display: block; margin: 0 auto; width: 100%;';
+  const style = parseVturbStyleString(styleMatch?.[1]);
+  const embedHtml = `<vturb-smartplayer id="${escapeHtmlAttr(smartplayerId)}" style="${escapeHtmlAttr(styleAttr)}"></vturb-smartplayer>`;
+
+  return { scriptSrc, smartplayerId, embedHtml, style };
+}
+
+/** Converte style="display: block; ..." num objeto adequado ao React. */
+function parseVturbStyleString(styleAttr) {
+  const defaults = { display: 'block', margin: '0 auto', width: '100%' };
+  if (!styleAttr || typeof styleAttr !== 'string') return defaults;
+  const s = styleAttr.trim();
+  if (!s) return defaults;
+  const out = { ...defaults };
+  for (const part of s.split(';')) {
+    const idx = part.indexOf(':');
+    if (idx === -1) continue;
+    const name = part.slice(0, idx).trim().toLowerCase();
+    const val = part.slice(idx + 1).trim();
+    if (!name || !val) continue;
+    const camel = name.replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    out[camel] = val;
+  }
+  return out;
+}
+
 /**
  * Extrai uma URL segura para iframe a partir do HTML de incorporação ou de um link direto.
  * Remove blocos <script>; aceita hosts comuns (YouTube, Vimeo, Panda Video, Wistia, Loom, Vidyard).
+ * Para VTurb/Converte AI use {@link parseFundadorVslVturbEmbed} (o iframe não aplica a esse player).
  */
 export function parseFundadorVslEmbedSrc(raw) {
   if (!raw || typeof raw !== 'string') return null;
@@ -542,6 +688,34 @@ export function parseFundadorVslEmbedSrc(raw) {
   }
 
   return null;
+}
+
+/**
+ * Vídeo opcional (demos): só a partir do HTML colado — VTurb, iframe ou URL.
+ * Sem fallback para YouTube global / .env (diferente da VSL principal).
+ *
+ * @returns {{ mode: 'vturb', vturb: object } | { mode: 'iframe', src: string } | { mode: 'placeholder' }}
+ */
+export function resolveFundadorOptionalVideoEmbed(raw) {
+  const t = typeof raw === 'string' ? raw.trim() : '';
+  if (!t) return { mode: 'placeholder' };
+  const vturb = parseFundadorVslVturbEmbed(t);
+  if (vturb) return { mode: 'vturb', vturb };
+  const iframeSrc = parseFundadorVslEmbedSrc(t);
+  if (iframeSrc) return { mode: 'iframe', src: iframeSrc };
+  return { mode: 'placeholder' };
+}
+
+/**
+ * Pelo menos um dos três campos de embed da secção «Como funciona» tem texto colado.
+ * Se os três estiverem vazios, a landing não mostra a secção nem o item «como-funciona» no menu.
+ */
+export function hasFundadorDemoVideoEmbeds(fc) {
+  if (!fc || typeof fc !== 'object') return false;
+  const neuro = (fc.demo_neuro_embed_html || '').trim();
+  const content = (fc.demo_content_embed_html || '').trim();
+  const carousel = (fc.demo_carousel_embed_html || '').trim();
+  return Boolean(neuro || content || carousel);
 }
 
 function normalizeFundadorVslWatchUrlToEmbed(u) {
@@ -720,6 +894,17 @@ export const FUNDADOR_COPY_UI_SECTIONS = [
     ],
   },
   {
+    title: 'Back redirect + UTMs (tecla «voltar»)',
+    fields: [
+      {
+        key: 'back_redirect_url',
+        label:
+          'URL completa (https://…) para onde ir quando o visitante usar «voltar» no browser. A query da landing (?utm_…, src, etc.) é anexada automaticamente. Vazio = desligado no painel (pode usar VITE_FUNDADOR_BACK_REDIRECT_URL no .env).',
+        rows: 2,
+      },
+    ],
+  },
+  {
     title: 'Checkout — links dos botões dos planos (sobrescreve .env se preenchido)',
     fields: [
       {
@@ -753,6 +938,7 @@ export const FUNDADOR_COPY_UI_SECTIONS = [
     title: 'Menu e cabeçalho',
     fields: [
       { key: 'nav_vsl', label: 'Nav: Vídeo (vazio = oculto no menu)', rows: 1 },
+      { key: 'nav_como_funciona', label: 'Nav: Como funciona — três vídeos (vazio = oculto)', rows: 1 },
       { key: 'nav_dor', label: 'Nav: O problema (vazio = oculto)', rows: 1 },
       { key: 'nav_solucao', label: 'Nav: Solução (vazio = oculto)', rows: 1 },
       { key: 'nav_criador', label: 'Nav: Quem criou (vazio = oculto)', rows: 1 },
@@ -781,10 +967,53 @@ export const FUNDADOR_COPY_UI_SECTIONS = [
       {
         key: 'vsl_embed_html',
         label:
-          'Script / iframe da VSL (opcional, prioridade máxima). Cole o código de incorporação (YouTube, Vimeo, Panda Video, etc.) ou só o link. Tags <script> são ignoradas.',
+          'VSL — iframe, URL ou código VTurb/Converte AI (prioridade máxima). YouTube/Vimeo/Panda: iframe ou link. VTurb: cole o código completo do painel (tag <vturb-smartplayer> + bloco JavaScript com s.src apontando para scripts.converteai.net/.../player.js). Esse script é interpretado pela página; outros embeds só usam iframe e continuam sem executar JS arbitrário.',
         rows: 10,
       },
+      {
+        key: 'vsl_vturb_speed_head_html',
+        label:
+          'VTurb — otimizar velocidade de carregamento (vai para o <head> desta página). Cole o bloco do painel VTurb: script do _plt + tags <link rel="preload"> e <link rel="dns-prefetch">. Apenas URLs em *.converteai.net e *.vturb.com.br; o script inline deve conter _plt (marcador de performance).',
+        rows: 14,
+      },
       { key: 'vsl_placeholder_html', label: 'Texto quando não há vídeo válido', rows: 3 },
+    ],
+  },
+  {
+    title:
+      'Como funciona — três vídeos (NeuroDesigner / conteúdo / carrossel). A secção na /fundador só aparece se pelo menos um dos três embeds tiver código.',
+    fields: [
+      { key: 'demo_section_eyebrow', label: 'Eyebrow da secção', rows: 1 },
+      { key: 'demo_section_title', label: 'Título da secção', rows: 2 },
+      { key: 'demo_section_subtitle', label: 'Subtítulo da secção', rows: 3 },
+      { key: 'demo_neuro_title', label: '1 — Título (NeuroDesigner)', rows: 1 },
+      { key: 'demo_neuro_intro', label: '1 — Texto curto', rows: 3 },
+      { key: 'demo_neuro_iframe_title', label: '1 — Título acessível do vídeo', rows: 1 },
+      {
+        key: 'demo_neuro_embed_html',
+        label:
+          '1 — VTurb / iframe / URL (NeuroDesigner). Mesmo formato que a VSL: código completo VTurb ou link/embed.',
+        rows: 8,
+      },
+      { key: 'demo_neuro_placeholder_html', label: '1 — Texto quando não há vídeo', rows: 2 },
+      { key: 'demo_content_title', label: '2 — Título (gerador de conteúdo)', rows: 1 },
+      { key: 'demo_content_intro', label: '2 — Texto curto', rows: 3 },
+      { key: 'demo_content_iframe_title', label: '2 — Título acessível do vídeo', rows: 1 },
+      {
+        key: 'demo_content_embed_html',
+        label: '2 — VTurb / iframe / URL (conteúdo)',
+        rows: 8,
+      },
+      { key: 'demo_content_placeholder_html', label: '2 — Texto quando não há vídeo', rows: 2 },
+      { key: 'demo_carousel_title', label: '3 — Título (carrossel)', rows: 1 },
+      { key: 'demo_carousel_intro', label: '3 — Texto curto', rows: 3 },
+      { key: 'demo_carousel_iframe_title', label: '3 — Título acessível do vídeo', rows: 1 },
+      {
+        key: 'demo_carousel_embed_html',
+        label: '3 — VTurb / iframe / URL (carrossel)',
+        rows: 8,
+      },
+      { key: 'demo_carousel_placeholder_html', label: '3 — Texto quando não há vídeo', rows: 2 },
     ],
   },
   {

@@ -87,7 +87,8 @@ const UserLayout = () => {
   const { lightLogoUrl, darkLogoUrl, iconLogoUrl, iconLightLogoUrl, iconDarkLogoUrl } = useSystemLogo();
   const isDesktop = useMediaQuery('(min-width: 768px)');
   const location = useLocation();
-  const isNeuroDesignPage = location.pathname === '/ferramentas/neurodesign' || location.pathname === '/ferramentas/artes-culto';
+  const isNeuroDesignPage =
+    location.pathname.startsWith('/ferramentas/neurodesign') || location.pathname === '/ferramentas/artes-culto';
   const isNeuroMotionPage = location.pathname === '/ferramentas/neuro-motion';
   const isChatIaPage = location.pathname === '/chat-ia';
   /** Ferramentas com canvas amplo: sidebar recolhida + logo compacta como no NeuroDesign */

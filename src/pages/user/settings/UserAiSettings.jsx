@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/SupabaseAuthContext';
 import { supabase } from '@/lib/customSupabaseClient';
 import { toast } from 'sonner';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus, Trash2, Edit, KeyRound, Image as ImageIcon, Bot, ToggleLeft, ToggleRight, Construction } from 'lucide-react';
@@ -173,7 +173,7 @@ const UserAiSettings = () => {
   );
 
   return (
-    <div className="p-4 sm:p-6 space-y-8">
+    <div className="notranslate space-y-8 p-4 sm:p-6" translate="no">
       <UserLlmConnectionDialog
         isOpen={isLlmDialogOpen}
         setIsOpen={setIsLlmDialogOpen}
@@ -214,9 +214,7 @@ const UserAiSettings = () => {
           </Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <AnimatePresence>
-            {llmConnections.map((conn, index) => renderConnectionCard(conn, index, 'llm'))}
-          </AnimatePresence>
+          {llmConnections.map((conn, index) => renderConnectionCard(conn, index, 'llm'))}
         </div>
         {llmConnections.length === 0 && (
           <div className="text-center py-8 px-4 border-2 border-dashed rounded-lg">
@@ -241,9 +239,7 @@ const UserAiSettings = () => {
           </Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <AnimatePresence>
-            {imageConnections.map((conn, index) => renderConnectionCard(conn, index, 'image'))}
-          </AnimatePresence>
+          {imageConnections.map((conn, index) => renderConnectionCard(conn, index, 'image'))}
         </div>
         {imageConnections.length === 0 && (
           <div className="text-center py-8 px-4 border-2 border-dashed rounded-lg">
@@ -268,9 +264,7 @@ const UserAiSettings = () => {
           </Button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <AnimatePresence>
-            {siteBuilderConnections.map((conn, index) => renderConnectionCard(conn, index, 'site_builder'))}
-          </AnimatePresence>
+          {siteBuilderConnections.map((conn, index) => renderConnectionCard(conn, index, 'site_builder'))}
         </div>
         {siteBuilderConnections.length === 0 && (
           <div className="text-center py-8 px-4 border-2 border-dashed rounded-lg">

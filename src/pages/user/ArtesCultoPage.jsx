@@ -350,6 +350,7 @@ const ArtesCultoPage = () => {
     subtitle: 'Artes para igrejas',
     showBrandHeader: true,
     showExpertsTab: false,
+    showCarouselTab: false,
   };
 
   return (

@@ -1082,7 +1082,7 @@ const LlmIntegrationCombobox = ({ integrations, selectedId, onSelect, logosByPro
           } catch {
             /* ignore */
           }
-          navigate('/ferramentas/neurodesign', { state: { neuroChatFillPrompt: text } });
+          navigate('/ferramentas/neurodesign/criar', { state: { neuroChatFillPrompt: text } });
         },
         [navigate]
       );
