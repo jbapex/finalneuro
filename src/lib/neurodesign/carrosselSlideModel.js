@@ -44,7 +44,7 @@ export const CARROSSEL_IDENTIDADE_ABERTURA = {
 export const CARROSSEL_TWITTER_IA_MAX_TITULO_CHARS = 260;
 export const CARROSSEL_TWITTER_IA_MAX_SUBTITULO_CHARS = 110;
 /** Px padrão após «Gerar com IA» (próximo do post de referência; ajuste manual nos sliders). */
-export const CARROSSEL_TWITTER_IA_DEFAULT_TITULO_TAMANHO = 56;
+export const CARROSSEL_TWITTER_IA_DEFAULT_TITULO_TAMANHO = 42;
 /** No preview post X empilhado o subtítulo replica o tamanho do corpo; mantemos o mesmo default na merge. */
 export const CARROSSEL_TWITTER_IA_DEFAULT_SUBTITULO_TAMANHO = CARROSSEL_TWITTER_IA_DEFAULT_TITULO_TAMANHO;
 

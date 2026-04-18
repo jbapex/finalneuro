@@ -756,7 +756,7 @@ Campos por slide — exatamente ${slideCount} itens em "slides":
 - "titulo": parágrafo corrido (várias frases, ponto final entre frases). Português brasileiro, direto.
 - "subtitulo": segunda linha opcional (reforço, dado, lembrete ou eco do gancho). PROIBIDO hashtags e #; pode ser "".
 
-Opcional por slide (inteiro ou omita): "tituloTamanho" entre 48 e 68 (px; ~${CARROSSEL_TWITTER_IA_DEFAULT_TITULO_TAMANHO} é neutro).
+Opcional por slide (inteiro ou omita): "tituloTamanho" entre 30 e 50 (px; corpo legível sem dominar o slide; ~${CARROSSEL_TWITTER_IA_DEFAULT_TITULO_TAMANHO} é neutro).
 
 Não inclua outros campos (nada de badge, handle, nome de perfil, etc.).`;
 
@@ -806,7 +806,7 @@ ${archetype}
 Instrução: "${improvePrompt}"
 Conteúdo atual:
 ${slidesTexto}
-Retorne APENAS JSON {"slides":[{"titulo":"...","subtitulo":"..."},...]} — cada slide só titulo e subtitulo (opcional tituloTamanho 48–68). O subtitulo não deve conter hashtags nem #.
+Retorne APENAS JSON {"slides":[{"titulo":"...","subtitulo":"..."},...]} — cada slide só titulo e subtitulo (opcional tituloTamanho 30–50). O subtitulo não deve conter hashtags nem #.
 Reorganize o texto se precisar para cada slide cumprir o papel acima; primeira frase de cada titulo = micro-headline alinhada ao slide. LIMITES: titulo no máximo ${CARROSSEL_TWITTER_IA_MAX_TITULO_CHARS} caracteres por slide; subtitulo no máximo ${CARROSSEL_TWITTER_IA_MAX_SUBTITULO_CHARS}.
 Mantenha exatamente ${slides.length} slides na mesma ordem.
 CRÍTICO: strings numa linha; sem aspas duplas dentro do texto; sem vírgulas finais; sem quebra de linha real dentro das strings.`;

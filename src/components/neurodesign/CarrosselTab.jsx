@@ -769,6 +769,8 @@ function buildTwitterSlidesFromPrev(prevSlides) {
   return prevSlides.map((s, i) => {
     const isFirst = i === 0;
     const isLast = i === total - 1;
+    /** Texto do slide vem só do modo Twitter — não reaproveitar cópia do Minimalista ao mudar de painel. */
+    const base = defaultSlide(i);
 
     const twitterShell = {
       corFundo: '#000000',
@@ -778,20 +780,23 @@ function buildTwitterSlidesFromPrev(prevSlides) {
       subtituloFonte: 'Inter',
       tituloPeso: isFirst ? 700 : 400,
       subtituloPeso: 400,
-      tituloTamanho: isFirst ? 38 : 26,
-      tituloEscala: 100,
-      subtituloTamanho: 18,
+      tituloTamanho: isFirst ? 28 : 15,
+      tituloEscala: isFirst ? 100 : 92,
+      subtituloTamanho: 13,
       tituloEspacamento: isFirst ? -0.5 : 0,
-      linhaEntreLinhas: isFirst ? 30 : 36,
+      /** No canvas X, linhaEntreLinhas/10 = line-height (ex.: 13 → 1,3). */
+      linhaEntreLinhas: isFirst ? 13 : 14,
       overlayEstilo: 'nenhum',
       overlayOpacidade: 0,
       padrao: 'nenhum',
-      twitterConteudoAnchorV: isFirst ? 'sup' : isLast ? 'centro' : 'sup',
+      /** Sempre «Centro» ao criar/gerar — alinha com pré-visualização estável; o utilizador pode mudar para Topo/Base. */
+      twitterConteudoAnchorV: 'centro',
       twitterConteudoAnchorH: 'esq',
       layoutPosicao: 'sup-esq',
       alinhamento: 'esq',
       margemHorizontal: 0,
-      margemVertical: 0,
+      /** Respiro em relação ao topo/fundo do slide (o canvas nunca usa menos que ~44px). */
+      margemVertical: 72,
       glass: false,
       mostrarBadge: true,
       badgeEstilo: 'minimal',
@@ -801,14 +806,14 @@ function buildTwitterSlidesFromPrev(prevSlides) {
       badgeTamanhoSlide: 100,
       badgePosX: 50,
       badgePosY: 8,
-      badgeTitulo: s.badgeTitulo || 'Título verificado',
+      badgeTitulo: s.badgeTitulo || 'Titulo verificado',
       badgeHandle: s.badgeHandle || 'Nome',
       badgeDescricao: '',
       badgeFotoUrl: s.badgeFotoUrl || null,
-      imagemGradeAtiva: !isFirst && !isLast,
+      /** Miniatura 16:9 em todos os slides (referência: vazio antes de gerar; corpo preenchido depois). */
+      imagemGradeAtiva: true,
       imagemGradeLayout: '1',
       imagemGradeAspecto: '16:9',
-      imagemGradeInicioFrac: null,
       imagemGradeSlots: createEmptyImagemGradeSlots(4),
       imagemGradeAdaptarTexto: true,
       imagemGradeRaio: 16,
@@ -830,11 +835,12 @@ function buildTwitterSlidesFromPrev(prevSlides) {
     };
 
     const merged = {
-      ...defaultSlide(i),
+      ...base,
       id: s.id,
-      titulo: s.titulo || defaultSlide(i).titulo,
-      subtitulo: s.subtitulo || defaultSlide(i).subtitulo,
+      titulo: base.titulo,
+      subtitulo: base.subtitulo,
       ...twitterShell,
+      imagemGradeInicioFrac: !isFirst && !isLast ? 0.55 : null,
     };
 
     return clearPanoramaMeta(normalizeCarrosselImagemGrade(merged));
@@ -3962,7 +3968,6 @@ ${designPromptSchemaAndRules}`;
       carrosselUndoFutureRef.current.pop();
     }
     carrosselUndoApplyingRef.current = true;
-    templateWorkspacesRef.current = { minimalista: null, twitter: null };
     setSlides(previous.slides);
     const maxI = Math.max(0, previous.slides.length - 1);
     setActiveSlideIndex(Math.min(Math.max(0, previous.activeSlideIndex), maxI));
@@ -3990,7 +3995,6 @@ ${designPromptSchemaAndRules}`;
       carrosselUndoPastRef.current.shift();
     }
     carrosselUndoApplyingRef.current = true;
-    templateWorkspacesRef.current = { minimalista: null, twitter: null };
     setSlides(next.slides);
     const maxI = Math.max(0, next.slides.length - 1);
     setActiveSlideIndex(Math.min(Math.max(0, next.activeSlideIndex), maxI));
@@ -4286,7 +4290,7 @@ ${designPromptSchemaAndRules}`;
             s.tituloTamanho !== '' &&
             Number.isFinite(tituloTam) &&
             tituloTam > 0
-              ? Math.min(72, Math.max(48, Math.round(tituloTam)))
+              ? Math.min(52, Math.max(30, Math.round(tituloTam)))
               : CARROSSEL_TWITTER_IA_DEFAULT_TITULO_TAMANHO;
           return normalizeCarrosselImagemGrade({
             ...slide,
@@ -4559,7 +4563,7 @@ ${designPromptSchemaAndRules}`;
               g.tituloTamanho !== '' &&
               Number.isFinite(tituloTam) &&
               tituloTam > 0
-                ? Math.min(72, Math.max(48, Math.round(tituloTam)))
+                ? Math.min(52, Math.max(30, Math.round(tituloTam)))
                 : s.tituloTamanho;
             return {
               ...s,
@@ -5973,6 +5977,18 @@ Sem textos, sem logos, sem marcas d'água.`;
                   M. Twitter
                 </button>
               </div>
+              <p className={cn(C_INFO, 'text-[9px] leading-snug')}>
+                Minimalista e M. Twitter são dois rascunhos separados: ao mudar de modo, o texto e o layout do outro
+                ficam guardados e não se misturam. Ao entrar no Twitter pela primeira vez, o corpo dos slides volta ao
+                texto padrão (não leva a cópia do Minimalista).
+              </p>
+              {template === 'twitter' ? (
+                <p className={cn(C_INFO, 'text-[9px] leading-snug opacity-90')}>
+                  Referência M. Twitter: antes de gerar vê o cartão (cabeçalho + corpo com texto padrão + miniatura
+                  16:9 vazia); depois de «Gerar com IA» o corpo passa a ser a copy gerada mantendo o mesmo cartão e a
+                  miniatura por baixo.
+                </p>
+              ) : null}
               <div className="grid grid-cols-2 gap-[5px]">
                 {[true, false].map((dark) => (
                   <button
@@ -7961,10 +7977,10 @@ Sem textos, sem logos, sem marcas d'água.`;
                     No slide estilo X com miniatura, a linha extra usa o mesmo tamanho de fonte que o corpo no preview e na exportação.
                   </p>
                   <CarrosselRangeRow
-                    label="Entrelinhas do corpo (×0,1)"
-                    value={Number(activeSlide.linhaEntreLinhas) || 18}
-                    min={14}
-                    max={26}
+                    label="Entrelinhas do corpo (÷10 = altura de linha, ex. 13 → 1,3)"
+                    value={Number(activeSlide.linhaEntreLinhas) || 14}
+                    min={11}
+                    max={22}
                     step={1}
                     onChange={(n) => updateActive('linhaEntreLinhas', n)}
                   />
@@ -8000,6 +8016,10 @@ Sem textos, sem logos, sem marcas d'água.`;
                       );
                     })}
                   </div>
+                  <p className={cn(C_INFO, 'mb-2 text-[9px] leading-snug')}>
+                    Novos slides e «Gerar com IA» começam na posição vertical Centro. Com muito texto e pouco espaço na
+                    faixa, experimente Topo para encostar o bloco ao topo e facilitar a leitura com scroll.
+                  </p>
                   <p className="mb-1 text-[10px] font-semibold text-muted-foreground">Horizontal</p>
                   <div className="grid grid-cols-3 gap-1.5">
                     {[

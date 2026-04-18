@@ -532,6 +532,11 @@ const CarrosselSlideCanvas = forwardRef(function CarrosselSlideCanvas(
   /** Faixa entre fim do texto e início da grelha (modo X empilhado), em px. */
   const twitterGradeGapPx = twitterStackedPost ? 6 : 0;
   const gradeTopWithGapPx = gradeGridTopPx + twitterGradeGapPx;
+  /** Mesmo recuo horizontal do bloco de texto — para a miniatura/grelha não colar às bordas no cartão X. */
+  const gradeHorizontalInset = useMemo(
+    () => carrosselTituloHorizontalInset(layoutShellKey, mh),
+    [layoutShellKey, mh]
+  );
 
   /** Área útil: margem horizontal assimétrica + respiro mínimo às bordas; vertical idem. Com grade, o texto fica acima da zona da grelha. */
   const marginShellStyle = useMemo(() => {
@@ -554,11 +559,13 @@ const CarrosselSlideCanvas = forwardRef(function CarrosselSlideCanvas(
         anchorV === 'sup' ? 'flex-start' : anchorV === 'inf' ? 'flex-end' : 'center';
       const alignItems =
         anchorH === 'esq' ? 'flex-start' : anchorH === 'dir' ? 'flex-end' : 'center';
+      /** Respiro uniforme; âncora vertical vem do slide (padrão «Centro» no Twitter). */
+      const twitterTopBreathingPx = 16;
       return {
         position: 'absolute',
         left: insetL,
         right: insetR,
-        top: insetT,
+        top: insetT + twitterTopBreathingPx,
         bottom,
         display: 'flex',
         flexDirection: 'column',
@@ -819,8 +826,8 @@ const CarrosselSlideCanvas = forwardRef(function CarrosselSlideCanvas(
             onActivateConfig && 'cursor-pointer'
           )}
           style={{
-            left: mh,
-            right: mh,
+            left: twitterStackedPost ? gradeHorizontalInset.left : mh,
+            right: twitterStackedPost ? gradeHorizontalInset.right : mh,
             top: twitterStackedPost ? gradeTopWithGapPx : gradeGridTopPx,
             bottom: mv,
             boxSizing: 'border-box',
